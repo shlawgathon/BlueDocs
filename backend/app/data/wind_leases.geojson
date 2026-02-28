@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0501", "COMPANY": "Vineyard Wind", "STATE": "MA", "AREA_KM2": 675 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.5, 41.0], [-70.0, 41.0], [-70.0, 41.3], [-70.5, 41.3], [-70.5, 41.0]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0500", "COMPANY": "Bay State Wind", "STATE": "MA", "AREA_KM2": 760 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.8, 40.85], [-70.3, 40.85], [-70.3, 41.0], [-70.8, 41.0], [-70.8, 40.85]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0512", "COMPANY": "Revolution Wind", "STATE": "RI", "AREA_KM2": 400 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-71.2, 41.05], [-70.9, 41.05], [-70.9, 41.25], [-71.2, 41.25], [-71.2, 41.05]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0520", "COMPANY": "Empire Wind", "STATE": "NY", "AREA_KM2": 320 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-73.5, 40.2], [-73.1, 40.2], [-73.1, 40.45], [-73.5, 40.45], [-73.5, 40.2]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0522", "COMPANY": "Sunrise Wind", "STATE": "NY", "AREA_KM2": 410 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-72.8, 40.8], [-72.2, 40.8], [-72.2, 41.0], [-72.8, 41.0], [-72.8, 40.8]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0532", "COMPANY": "Atlantic Shores", "STATE": "NJ", "AREA_KM2": 740 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-73.8, 39.4], [-73.3, 39.4], [-73.3, 39.7], [-73.8, 39.7], [-73.8, 39.4]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0498", "COMPANY": "Ocean Wind", "STATE": "NJ", "AREA_KM2": 680 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-74.2, 39.1], [-73.8, 39.1], [-73.8, 39.4], [-74.2, 39.4], [-74.2, 39.1]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0537", "COMPANY": "US Wind", "STATE": "MD", "AREA_KM2": 320 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-74.8, 38.5], [-74.5, 38.5], [-74.5, 38.7], [-74.8, 38.7], [-74.8, 38.5]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0545", "COMPANY": "Dominion Energy", "STATE": "VA", "AREA_KM2": 1120 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-75.5, 36.8], [-75.0, 36.8], [-75.0, 37.1], [-75.5, 37.1], [-75.5, 36.8]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "LEASE_NUMB": "OCS-A 0549", "COMPANY": "Kitty Hawk Wind", "STATE": "NC", "AREA_KM2": 550 },
+      "geometry": { "type": "Polygon", "coordinates": [[[-75.8, 36.2], [-75.4, 36.2], [-75.4, 36.5], [-75.8, 36.5], [-75.8, 36.2]]] }
+    }
+  ]
+}

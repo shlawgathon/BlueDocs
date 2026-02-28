@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlueRegistry Storyboard</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-deep-navy: #0a1628;
+        --ocean-blue: #1e40af;
+        --teal-accent: #14b8a6;
+        --warning-amber: #f59e0b;
+        --danger-red: #ef4444;
+        --success-green: #10b981;
+        --glass-bg: rgba(10, 22, 40, 0.65);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Inter", sans-serif;
+      }
+
+      body {
+        background-color: var(--bg-deep-navy);
+        color: var(--text-primary);
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
+        /* Simple grid pattern for map simulation */
+        background-image:
+          linear-gradient(rgba(30, 64, 175, 0.1) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(30, 64, 175, 0.1) 1px, transparent 1px);
+        background-size: 50px 50px;
+      }
+
+      /* Top Header */
+      .header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--glass-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        z-index: 10;
+      }
+      .logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--teal-accent);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tagline {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-left: 16px;
+        font-weight: 400;
+      }
+
+      .btn-new-project {
+        background: var(--teal-accent);
+        color: var(--bg-deep-navy);
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 0 15px rgba(20, 184, 166, 0.3);
+      }
+      .btn-new-project:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(20, 184, 166, 0.5);
+      }
+
+      /* Left Layer Panel */
+      .layer-panel {
+        position: absolute;
+        top: 80px;
+        left: 24px;
+        width: 280px;
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 20px;
+        z-index: 10;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        animation: slideInLeft 0.5s ease-out;
+      }
+
+      @keyframes slideInLeft {
+        from {
+          transform: translateX(-150%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+
+      .panel-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .layer-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+        font-size: 14px;
+      }
+      .layer-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 12px;
+      }
+      .layer-name {
+        flex-grow: 1;
+      }
+
+      /* Toggle Switch */
+      .toggle {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        cursor: pointer;
+        transition: 0.3s;
+      }
+      .toggle.active {
+        background: var(--teal-accent);
+      }
+      .toggle::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        transition: 0.3s;
+      }
+      .toggle.active::after {
+        transform: translateX(16px);
+      }
+
+      /* Map Interaction Area */
+      .map-interactive {
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        cursor: default;
+      }
+      .map-interactive.placement-mode {
+        cursor: crosshair;
+      }
+
+      /* Modal: Project Setup */
+      .modal {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.9);
+        background: var(--glass-bg);
+        backdrop-filter: blur(16px);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 24px;
+        width: 320px;
+        z-index: 30;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .modal.active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+        pointer-events: all;
+      }
+
+      .modal h2 {
+        font-size: 18px;
+        margin-bottom: 20px;
+      }
+      .form-group {
+        margin-bottom: 16px;
+      }
+      .form-group label {
+        display: block;
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+      }
+      .form-group input,
+      .form-group select {
+        width: 100%;
+        padding: 10px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: white;
+        font-family: "Inter";
+        outline: none;
+      }
+      .form-group input:focus,
+      .form-group select:focus {
+        border-color: var(--teal-accent);
+      }
+
+      .btn-analyze {
+        width: 100%;
+        background: var(--teal-accent);
+        color: var(--bg-deep-navy);
+        border: none;
+        padding: 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 8px;
+        transition: 0.3s;
+      }
+      .btn-analyze:hover {
+        box-shadow: 0 0 15px rgba(20, 184, 166, 0.4);
+      }
+
+      /* Map Objects */
+      .map-feature {
+        position: absolute;
+      }
+      .mpa {
+        top: 30%;
+        left: 40%;
+        width: 200px;
+        height: 150px;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid var(--success-green);
+        border-radius: 40% 60% 70% 30%;
+      }
+      .shipping-lane {
+        top: 20%;
+        left: 60%;
+        width: 400px;
+        height: 40px;
+        background: rgba(245, 158, 11, 0.1);
+        border-top: 2px dashed var(--warning-amber);
+        border-bottom: 2px dashed var(--warning-amber);
+        transform: rotate(15deg);
+      }
+
+      .project-circle {
+        position: absolute;
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: rgba(59, 130, 246, 0.2);
+        border: 2px solid #3b82f6;
+        transform: translate(-50%, -50%);
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          top 1s ease-in-out,
+          left 1s ease-in-out;
+      }
+      .project-circle.active {
+        opacity: 1;
+      }
+      .project-circle.scanning::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: 50%;
+        border: 2px solid var(--teal-accent);
+        animation: radar 2s infinite linear;
+      }
+      @keyframes radar {
+        0% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(2);
+          opacity: 0;
+        }
+      }
+
+      /* Right Conflict Panel */
+      .conflict-panel {
+        position: absolute;
+        top: 80px;
+        right: 24px;
+        width: 360px;
+        background: var(--glass-bg);
+        backdrop-filter: blur(16px);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 24px;
+        z-index: 20;
+        box-shadow: -10px 0 40px rgba(0, 0, 0, 0.4);
+        transform: translateX(120%);
+        transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .conflict-panel.active {
+        transform: translateX(0);
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 24px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 16px;
+      }
+      .project-name {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .project-meta {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      .close-btn {
+        cursor: pointer;
+        color: var(--text-secondary);
+        font-size: 20px;
+        line-height: 1;
+        transition: 0.2s;
+      }
+      .close-btn:hover {
+        color: white;
+      }
+
+      .risk-card {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+      }
+      .risk-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+      }
+      .risk-bar-bg {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .risk-bar-fill {
+        height: 100%;
+        width: 78%;
+        background: linear-gradient(
+          90deg,
+          var(--success-green),
+          var(--warning-amber),
+          var(--danger-red)
+        );
+        transition: width 1s ease-out;
+      }
+      .risk-status {
+        display: inline-block;
+        padding: 4px 8px;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 4px;
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--danger-red);
+      }
+
+      .conflict-item {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding: 12px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        transition: 0.2s;
+      }
+      .conflict-item:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .conflict-icon {
+        font-size: 18px;
+      }
+      .conflict-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .conflict-desc {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .recommendation {
+        border: 1px solid var(--teal-accent);
+        border-radius: 8px;
+        padding: 16px;
+        background: linear-gradient(
+          135deg,
+          rgba(20, 184, 166, 0.1),
+          rgba(0, 0, 0, 0)
+        );
+        margin-top: 24px;
+      }
+      .rec-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--teal-accent);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .rec-text {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text-primary);
+        margin-bottom: 16px;
+      }
+      .btn-apply {
+        background: transparent;
+        color: var(--teal-accent);
+        border: 1px solid var(--teal-accent);
+        width: 100%;
+        padding: 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.3s;
+      }
+      .btn-apply:hover {
+        background: rgba(20, 184, 166, 0.1);
+      }
+
+      /* Overlay text */
+      .instruction-toast {
+        position: absolute;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        padding: 12px 24px;
+        border-radius: 30px;
+        font-size: 14px;
+        opacity: 0;
+        pointer-events: none;
+        transition: 0.3s;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .instruction-toast.active {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-10px);
+      }
+
+      .feature-highlight {
+        box-shadow: 0 0 30px rgba(239, 68, 68, 0.6);
+        border-color: var(--danger-red) !important;
+        z-index: 5;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+        </svg>
+        BlueRegistry
+        <span class="tagline">Spatial Intelligence for the Blue Economy</span>
+      </div>
+      <button class="btn-new-project" id="btn-new-project">
+        📍 New Project
+      </button>
+    </div>
+
+    <!-- Layers Panel -->
+    <div class="layer-panel">
+      <div class="panel-title"><span>🗺️ Layers</span> <span>▾</span></div>
+      <div class="layer-item">
+        <div class="layer-dot" style="background: #3b82f6"></div>
+        <div class="layer-name">Wind Leases</div>
+        <div class="toggle active"></div>
+      </div>
+      <div class="layer-item">
+        <div class="layer-dot" style="background: #10b981"></div>
+        <div class="layer-name">Marine Protected Areas</div>
+        <div class="toggle active"></div>
+      </div>
+      <div class="layer-item">
+        <div class="layer-dot" style="background: #f59e0b"></div>
+        <div class="layer-name">Shipping Lanes</div>
+        <div class="toggle active"></div>
+      </div>
+      <div class="layer-item">
+        <div class="layer-dot" style="background: #8b5cf6"></div>
+        <div class="layer-name">Submarine Cables</div>
+        <div class="toggle active"></div>
+      </div>
+      <div class="layer-item">
+        <div class="layer-dot" style="background: #0ea5e9"></div>
+        <div class="layer-name">Bathymetry</div>
+        <div class="toggle"></div>
+      </div>
+    </div>
+
+    <!-- Map Interactive Area -->
+    <div class="map-interactive" id="map-area">
+      <!-- Mock Map Features -->
+      <div class="map-feature mpa" id="feat-mpa"></div>
+      <div class="map-feature shipping-lane" id="feat-shipping"></div>
+
+      <!-- Project Circle -->
+      <div class="project-circle" id="project-circle"></div>
+    </div>
+
+    <!-- Floating Instruction -->
+    <div class="instruction-toast" id="toast">
+      Click anywhere on the map to propose a project
+    </div>
+
+    <!-- Project Setup Modal -->
+    <div class="modal" id="setup-modal">
+      <h2>Project Configuration</h2>
+      <div class="form-group">
+        <label>Project Type</label>
+        <select id="project-type">
+          <option>Offshore Wind</option>
+          <option>Aquaculture</option>
+          <option>Subsea Cable</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Radius (km)</label>
+        <input type="range" min="5" max="50" value="25" id="radius-slider" />
+      </div>
+      <div class="form-group">
+        <label>Project Name (Optional)</label>
+        <input
+          type="text"
+          id="project-name"
+          value="My Wind Farm"
+          placeholder="Enter name..."
+        />
+      </div>
+      <button class="btn-analyze" id="btn-analyze">Analyze Conflicts</button>
+    </div>
+
+    <!-- Conflict Analysis Panel -->
+    <div class="conflict-panel" id="conflict-panel">
+      <div class="panel-header">
+        <div>
+          <div class="project-name" id="display-project-name">My Wind Farm</div>
+          <div class="project-meta" id="coords-display">
+            42.2°N, 70.5°W · 25km radius
+          </div>
+        </div>
+        <div class="close-btn" id="btn-close-panel">✕</div>
+      </div>
+
+      <div class="risk-card">
+        <div class="risk-header">
+          <span>RISK SCORE</span>
+          <span id="score-text">78/100</span>
+        </div>
+        <div class="risk-bar-bg">
+          <div class="risk-bar-fill" id="risk-bar"></div>
+        </div>
+        <div class="risk-status" id="risk-badge">HIGH RISK</div>
+      </div>
+
+      <div
+        class="conflict-item"
+        id="conflict-mpa"
+        onmouseover="
+          document.getElementById('feat-mpa').classList.add('feature-highlight')
+        "
+        onmouseout="
+          document
+            .getElementById('feat-mpa')
+            .classList.remove('feature-highlight')
+        "
+      >
+        <div class="conflict-icon">❌</div>
+        <div>
+          <div class="conflict-title" style="color: var(--danger-red)">
+            Stellwagen Bank NMS
+          </div>
+          <div class="conflict-desc">MPA overlap (312 km²)</div>
+        </div>
+      </div>
+
+      <div
+        class="conflict-item"
+        id="conflict-shipping"
+        onmouseover="
+          document
+            .getElementById('feat-shipping')
+            .classList.add('feature-highlight')
+        "
+        onmouseout="
+          document
+            .getElementById('feat-shipping')
+            .classList.remove('feature-highlight')
+        "
+      >
+        <div class="conflict-icon">⚠️</div>
+        <div>
+          <div class="conflict-title" style="color: var(--warning-amber)">
+            TSS Boston Shipping Lane
+          </div>
+          <div class="conflict-desc">Within 8km (buffer zone)</div>
+        </div>
+      </div>
+
+      <div class="conflict-item">
+        <div class="conflict-icon">✅</div>
+        <div>
+          <div class="conflict-title" style="color: var(--success-green)">
+            Water Depth
+          </div>
+          <div class="conflict-desc">45m — suitable for fixed-bottom</div>
+        </div>
+      </div>
+
+      <div class="recommendation">
+        <div class="rec-title">💡 AI RECOMMENDATION</div>
+        <div class="rec-text" id="ai-rec-text">
+          Move 25km SE to clear MPA boundary. New score: 23/100 (LOW RISK) ✅
+        </div>
+        <button class="btn-apply" id="btn-apply">Apply Suggestion</button>
+      </div>
+    </div>
+
+    <script>
+      // DOM Elements
+      const mapArea = document.getElementById("map-area");
+      const btnNewProject = document.getElementById("btn-new-project");
+      const toast = document.getElementById("toast");
+      const setupModal = document.getElementById("setup-modal");
+      const projectCircle = document.getElementById("project-circle");
+      const btnAnalyze = document.getElementById("btn-analyze");
+      const conflictPanel = document.getElementById("conflict-panel");
+      const btnClosePanel = document.getElementById("btn-close-panel");
+      const btnApply = document.getElementById("btn-apply");
+      const radiusSlider = document.getElementById("radius-slider");
+      const projectNameInput = document.getElementById("project-name");
+      const displayProjectName = document.getElementById(
+        "display-project-name",
+      );
+
+      let isPlacementMode = false;
+
+      // Toggle placement mode
+      btnNewProject.addEventListener("click", () => {
+        isPlacementMode = true;
+        mapArea.classList.add("placement-mode");
+        toast.classList.add("active");
+        conflictPanel.classList.remove("active");
+        projectCircle.classList.remove("active");
+      });
+
+      // Click on map to place project
+      mapArea.addEventListener("click", (e) => {
+        if (!isPlacementMode) return;
+        if (
+          e.target.closest(".modal") ||
+          e.target.closest(".conflict-panel") ||
+          e.target.closest(".layer-panel")
+        )
+          return; // ignore clicks on panels
+
+        // set circle position
+        projectCircle.style.left = e.clientX + "px";
+        projectCircle.style.top = e.clientY + "px";
+        projectCircle.classList.add("active");
+
+        // show modal
+        setupModal.style.left = e.clientX + 30 + "px";
+        setupModal.style.top = e.clientY + "px";
+        setupModal.classList.add("active");
+
+        toast.classList.remove("active");
+        isPlacementMode = false;
+        mapArea.classList.remove("placement-mode");
+      });
+
+      // Update radius dynamically
+      radiusSlider.addEventListener("input", (e) => {
+        const size = e.target.value * 4; // scale for visualization
+        projectCircle.style.width = size + "px";
+        projectCircle.style.height = size + "px";
+      });
+
+      // Analyze button
+      btnAnalyze.addEventListener("click", () => {
+        setupModal.classList.remove("active");
+        projectCircle.classList.add("scanning");
+
+        // Update name and coords
+        displayProjectName.innerText =
+          projectNameInput.value || "Untitled Project";
+
+        // Simulate loading
+        btnAnalyze.innerText = "Analyzing...";
+        setTimeout(() => {
+          projectCircle.classList.remove("scanning");
+          conflictPanel.classList.add("active");
+          btnAnalyze.innerText = "Analyze Conflicts";
+
+          // reset risk UI to initial state
+          document.getElementById("risk-bar").style.width = "78%";
+          document.getElementById("risk-bar").style.background =
+            "linear-gradient(90deg, var(--success-green), var(--warning-amber), var(--danger-red))";
+          document.getElementById("score-text").innerText = "78/100";
+          document.getElementById("risk-badge").innerText = "HIGH RISK";
+          document.getElementById("risk-badge").style.color =
+            "var(--danger-red)";
+          document.getElementById("risk-badge").style.background =
+            "rgba(239, 68, 68, 0.2)";
+
+          // Reset conflicts
+          document.getElementById("conflict-mpa").style.opacity = "1";
+          document.getElementById("conflict-shipping").style.opacity = "1";
+        }, 1000);
+      });
+
+      // Close panel
+      btnClosePanel.addEventListener("click", () => {
+        conflictPanel.classList.remove("active");
+        projectCircle.classList.remove("active");
+      });
+
+      // Apply Recommendation
+      btnApply.addEventListener("click", () => {
+        // Move circle to "safe" spot
+        projectCircle.classList.add("scanning");
+        projectCircle.style.left = "30%";
+        projectCircle.style.top = "60%";
+
+        setTimeout(() => {
+          projectCircle.classList.remove("scanning");
+          // Update UI to low risk
+          document.getElementById("risk-bar").style.width = "23%";
+          document.getElementById("risk-bar").style.background =
+            "var(--success-green)";
+          document.getElementById("score-text").innerText = "23/100";
+          document.getElementById("risk-badge").innerText = "LOW RISK";
+          document.getElementById("risk-badge").style.color =
+            "var(--success-green)";
+          document.getElementById("risk-badge").style.background =
+            "rgba(16, 185, 129, 0.2)";
+
+          // Dim conflicts
+          document.getElementById("conflict-mpa").style.opacity = "0.3";
+          document.getElementById("conflict-shipping").style.opacity = "0.3";
+
+          document.getElementById("ai-rec-text").innerText =
+            "Changes applied. Analyzing new location... ✓";
+
+          btnApply.innerText = "Applied Successfully ✓";
+          setTimeout(() => (btnApply.innerText = "Apply Suggestion"), 2000);
+        }, 1500);
+      });
+
+      // Toggles
+      document.querySelectorAll(".toggle").forEach((t) => {
+        t.addEventListener("click", () => t.classList.toggle("active"));
+      });
+    </script>
+  </body>
+</html>

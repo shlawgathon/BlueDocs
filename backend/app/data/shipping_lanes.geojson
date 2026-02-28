@@ -1,0 +1,45 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "NAME": "TSS Boston Approach", "TYPE": "Traffic Separation Scheme" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.8, 42.2], [-70.3, 42.3], [-70.2, 42.4], [-70.7, 42.35], [-70.8, 42.2]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "TSS Narragansett Bay Approach", "TYPE": "Traffic Separation Scheme" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-71.5, 41.2], [-71.0, 41.15], [-70.9, 41.25], [-71.4, 41.35], [-71.5, 41.2]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "TSS New York Approach (Ambrose)", "TYPE": "Traffic Separation Scheme" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-73.95, 40.4], [-73.5, 40.35], [-73.4, 40.5], [-73.85, 40.55], [-73.95, 40.4]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "TSS Delaware Bay Approach", "TYPE": "Traffic Separation Scheme" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-75.0, 38.7], [-74.6, 38.65], [-74.5, 38.8], [-74.9, 38.85], [-75.0, 38.7]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "TSS Chesapeake Bay Approach", "TYPE": "Traffic Separation Scheme" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-76.0, 36.8], [-75.6, 36.75], [-75.5, 36.95], [-75.9, 37.0], [-76.0, 36.8]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "Precautionary Area Off Nantucket", "TYPE": "Precautionary Area" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-69.8, 41.0], [-69.4, 40.95], [-69.3, 41.15], [-69.7, 41.2], [-69.8, 41.0]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "Cape Cod Canal Approach", "TYPE": "Traffic Separation Scheme" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.7, 41.7], [-70.5, 41.65], [-70.45, 41.75], [-70.65, 41.8], [-70.7, 41.7]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "NAME": "Southeast Shipping Corridor", "TYPE": "Shipping Safety Fairway" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-75.5, 35.5], [-75.0, 35.5], [-74.8, 36.0], [-75.3, 36.0], [-75.5, 35.5]]] }
+    }
+  ]
+}

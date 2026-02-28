@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/* ── Custom Animation Keyframes ────────────────────────────── */
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    transform: translateX(-50%) translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(-10px);
+    opacity: 1;
+  }
+}
+
+/* ── Utility Classes ───────────────────────────────────────── */
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out both;
+}
+
+/* ── Range Slider ──────────────────────────────────────────── */
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #14b8a6;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(20, 184, 166, 0.4);
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #14b8a6;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 10px rgba(20, 184, 166, 0.4);
+}
+
+/* ── Map Popup Override ────────────────────────────────────── */
+
+.mapboxgl-popup-content {
+  background: rgba(10, 22, 40, 0.9) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  color: #f8fafc !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: rgba(10, 22, 40, 0.9) !important;
+}
+
+.mapboxgl-popup-close-button {
+  color: #94a3b8 !important;
+  font-size: 16px;
+  padding: 2px 6px;
+}
+
+.mapboxgl-popup-close-button:hover {
+  color: #f8fafc !important;
+  background: transparent !important;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Select Dropdown ───────────────────────────────────────── */
+
+select option {
+  background: #0a1628;
+  color: #f8fafc;
+}
