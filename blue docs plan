@@ -1,0 +1,340 @@
+# BlueRegistry — Split Implementation Plan
+
+Two parallel workstreams that merge at clearly defined API contracts.
+
+---
+
+## 🔗 Integration Contract (Agree on This First)
+
+Both tracks build against these API shapes. **Define these before splitting up.**
+
+```jsonc
+// GET /api/layers → returns all map layers
+{
+  "layers": [
+    {
+      "id": "wind-leases",
+      "name": "Offshore Wind Leases",
+      "type": "polygon",           // polygon | line | point
+      "color": "#3B82F6",          // default render color
+      "visible": true,             // default visibility
+      "geojson": { /* standard GeoJSON FeatureCollection */ }
+    },
+    {
+      "id": "marine-protected-areas",
+      "name": "Marine Protected Areas",
+      "type": "polygon",
+      "color": "#10B981",
+      "visible": true,
+      "geojson": { /* ... */ }
+    }
+    // ... more layers
+  ]
+}
+
+// POST /api/conflict-check → run conflict analysis
+// Request:
+{
+  "project_type": "offshore_wind",   // offshore_wind | aquaculture | oae | cable
+  "latitude": 42.2,
+  "longitude": -70.5,
+  "radius_km": 25,
+  "name": "My Wind Farm"            // optional label
+}
+
+// Response:
+{
+  "risk_score": 78,                  // 0-100
+  "risk_level": "high",             // low | medium | high | critical
+  "conflicts": [
+    {
+      "layer_id": "marine-protected-areas",
+      "layer_name": "Marine Protected Areas",
+      "type": "overlap",            // overlap | buffer | proximity
+      "severity": "critical",       // critical | warning | info
+      "detail": "Overlaps with Stellwagen Bank National Marine Sanctuary",
+      "overlap_area_km2": 312.5
+    },
+    {
+      "layer_id": "shipping-lanes",
+      "layer_name": "Shipping Lanes",
+      "type": "buffer",
+      "severity": "warning",
+      "detail": "Within 8km of TSS Boston approach lane",
+      "distance_km": 8.2
+    }
+  ],
+  "recommendation": {
+    "action": "relocate",
+    "suggested_lat": 41.9,
+    "suggested_lon": -70.1,
+    "new_risk_score": 23,
+    "reasoning": "Moving 25km SE avoids MPA overlap and increases distance from shipping lane to 22km"
+  },
+  "project_circle": {               // echo back for rendering
+    "center": [42.2, -70.5],
+    "radius_km": 25
+  }
+}
+```
+
+---
+
+## 🎨 Track A: Frontend + UI/UX (Partner)
+
+> **Stack:** React (Vite) + Mapbox GL JS + vanilla CSS
+> **Goal:** Build a visually stunning ocean dashboard that looks like a premium SaaS product, not a homework project.
+
+### A1. Project Setup & Design System (1 hr)
+
+- Init React app with Vite (or use existing project structure)
+- Set up Mapbox GL JS with a **dark ocean-themed basemap** (use `mapbox://styles/mapbox/dark-v11` or similar)
+- Create a CSS design system with variables:
+  - **Color palette:** Deep navy (`#0A1628`), ocean blue (`#1E40AF`), teal accent (`#14B8A6`), warning amber (`#F59E0B`), danger red (`#EF4444`), success green (`#10B981`)
+  - **Glass effect:** Panels should use `backdrop-filter: blur(12px)` + semi-transparent backgrounds
+  - **Typography:** Use Inter or similar from Google Fonts
+  - **Animations:** Smooth transitions on all interactive elements (300ms ease)
+
+### A2. Map Component (2 hrs)
+
+**The map IS the product. It should fill the entire viewport.**
+
+- Full-screen Mapbox map centered on US East Coast (`center: [-71, 41], zoom: 6`)
+- Render layers from `/api/layers` response:
+  - **Polygons** (wind leases, MPAs): filled with semi-transparent color + colored border
+  - **Lines** (shipping lanes, cables): dashed/solid lines with glow effect
+  - **Each layer gets a distinct, accessible color** (use the `color` field from API)
+- **Hover behavior:** When hovering over any feature, show a tooltip with the feature name/type
+- **Click behavior on existing features:** Click a polygon/line → show a small info popup with details
+- Map should have smooth fly-to animations when moving to recommended locations
+
+### A3. Layer Control Panel (1.5 hrs)
+
+**Floating panel on the left side of the map (glassmorphism style).**
+
+- Toggle switches for each layer (on/off), with the layer's color dot next to the name
+- Each toggle immediately shows/hides the corresponding Mapbox layer
+- Layer count badge showing how many features are in each layer
+- Collapsible — clicking a header chevron collapses the panel to just an icon
+- Small legend at the bottom explaining the color coding
+
+**Visual reference:**
+```
+┌──────────────────────────┐
+│  🗺️  LAYERS           ▾ │
+│──────────────────────────│
+│  🔵 Wind Leases    [✓]  │  ← toggle + color dot
+│  🟢 MPAs           [✓]  │
+│  🟠 Shipping Lanes [✓]  │
+│  🟣 Submarine Cables[✓] │
+│  🌊 Bathymetry     [ ]  │
+│──────────────────────────│
+│  ◻ Legend                │
+└──────────────────────────┘
+```
+
+### A4. Project Proposal UX — "Drop a Pin" (2 hrs)
+
+**This is the hero interaction. Make it feel magical.**
+
+1. **Toolbar button** (top-right): "📍 New Project" — when clicked, enters "placement mode"
+   - Cursor changes to crosshair
+   - Subtle pulsing overlay appears: *"Click anywhere on the map to propose a project"*
+
+2. **Click on map** → Opens a small modal/drawer:
+   - **Project type** dropdown: Offshore Wind | Aquaculture | OAE Site | Subsea Cable
+   - **Radius** slider: 5km – 100km (with live circle preview on map)
+   - **Name** text input (optional)
+   - **"Analyze Conflicts"** button (primary, large, glowing accent color)
+
+3. **While analyzing**: 
+   - Circle on map pulses with a scanning animation (like a radar sweep)
+   - Button shows a loading spinner
+   - Call `POST /api/conflict-check` with the parameters
+
+4. **After response**: Slide open the conflict panel (A5)
+
+### A5. Conflict Analysis Panel (2 hrs)
+
+**Slides in from the right side of the screen. This is the payoff.**
+
+```
+┌──────────────────────────────────────┐
+│  CONFLICT ANALYSIS          ✕  Close │
+│──────────────────────────────────────│
+│                                      │
+│  My Wind Farm                        │
+│  42.2°N, 70.5°W · 25km radius       │
+│                                      │
+│  ┌──────────────────────────────┐    │
+│  │   RISK SCORE                 │    │
+│  │      ██████████░░░  78/100   │    │ ← color-coded bar
+│  │         HIGH RISK            │    │ ← red badge
+│  └──────────────────────────────┘    │
+│                                      │
+│  ❌ Stellwagen Bank NMS              │ ← critical = red
+│     MPA overlap (312 km²)            │
+│                                      │
+│  ⚠️ TSS Boston Shipping Lane        │ ← warning = amber  
+│     Within 8km (buffer zone)         │
+│                                      │
+│  ⚠️ TAT-14 Submarine Cable          │ ← warning = amber
+│     Crosses cable route              │
+│                                      │
+│  ✅ Water Depth                      │ ← info = green
+│     45m — suitable for fixed-bottom  │
+│                                      │
+│  ┌──────────────────────────────┐    │
+│  │  💡 AI RECOMMENDATION        │    │
+│  │                              │    │
+│  │  Move 25km SE to clear       │    │
+│  │  MPA boundary. New score:    │    │
+│  │  23/100 (LOW RISK) ✅        │    │
+│  │                              │    │
+│  │  [ Apply Suggestion ]        │    │ ← button
+│  └──────────────────────────────┘    │
+└──────────────────────────────────────┘
+```
+
+- **Each conflict** is a card with icon (❌/⚠️/✅), title, and one-line detail
+- **Risk score bar** is color-coded (green → yellow → red)
+- **"Apply Suggestion" button** → calls the map to fly-to the suggested coordinates, redraws the circle, and re-runs the analysis
+- **On map simultaneously:** conflicting zones are highlighted with a red pulsing overlay
+
+### A6. Polish & Micro-interactions (1 hr)
+
+- **Loading state:** Ocean-themed skeleton screen while layers fetch
+- **Empty state:** Before any analysis, show a subtle prompt: *"Drop a pin to begin conflict analysis"*
+- **Responsive:** Works on laptop screens (1280px+). Don't worry about mobile.
+- **Header bar** (thin, top): "BlueRegistry" logo/wordmark + tagline *"Spatial Intelligence for the Blue Economy"*
+- **Smooth panel transitions:** Panels slide in with spring-like easing
+- **Map interactions:** When a conflict is highlighted in the panel, hovering over it should pulse the corresponding zone on the map
+
+### A-Summary: Frontend Deliverables Checklist
+
+- [ ] Dark ocean-themed Mapbox full-screen map
+- [ ] Layer rendering from API response (polygons, lines)
+- [ ] Layer toggle panel (glassmorphism, left side)
+- [ ] "New Project" button → placement mode → click for pin
+- [ ] Project config modal (type, radius slider, name)
+- [ ] Conflict panel (right slide-in) with risk score + conflict cards
+- [ ] "Apply Suggestion" button → fly-to + re-analyze
+- [ ] Hover tooltips on map features
+- [ ] Polish: animations, loading states, header
+
+---
+
+## ⚙️ Track B: Backend + AI (Krish)
+
+> **Stack:** FastAPI + Shapely + XGBoost + Python
+> **Goal:** Ingest real GeoJSON data, build conflict detection, serve everything via clean APIs.
+
+### B1. Project Scaffold + Data Ingestion (2 hrs)
+
+- Set up FastAPI with CORS enabled (for local frontend dev)
+- Create `/app/data/layers/` directory with downloaded GeoJSON files:
+  - `wind_leases.geojson` — from BOEM (data.gov ArcGIS REST API)
+  - `marine_protected_areas.geojson` — from NOAA MPA Inventory
+  - `shipping_lanes.geojson` — from MarineCadastre (pre-processed AIS density into lane polygons)
+  - `submarine_cables.geojson` — from TeleGeography API
+- Write a `GeoDataService` that loads all GeoJSON at startup, parses with `shapely`, and caches in memory
+- Implement `GET /api/layers` — returns all layers in the agreed contract format
+
+### B2. Spatial Conflict Engine (2.5 hrs)
+
+- Build `ConflictEngine` class:
+  - **`check_overlap(project_circle, layer)`** — uses Shapely `intersects()` to check if the proposed project circle overlaps any feature in the layer
+  - **`check_buffer(project_circle, layer, buffer_km)`** — checks if project is within X km of any feature (configurable per layer: 5km for MPAs, 2km for cables, 10km for shipping)
+  - **`compute_overlap_area(project_circle, feature)`** — returns km² of intersection
+  - **`find_nearest_feature(project_circle, layer)`** — returns closest feature + distance
+- Output a list of `Conflict` objects matching the API contract
+
+### B3. ML Conflict Scorer (2 hrs)
+
+- Generate synthetic training data:
+  - Sample 5000 random ocean points
+  - Compute features: dist-to-nearest-MPA, dist-to-shipping-lane, dist-to-cable, water depth, # overlapping jurisdictions, project type (encoded)
+  - Label with conflict severity (use rule-based logic to generate ground truth)
+- Train XGBoost regressor → outputs risk score 0-100
+- Save model as `conflict_scorer.pkl`
+- Integrate into `POST /api/conflict-check` pipeline
+
+### B4. Recommendation Engine (1.5 hrs)
+
+- Simple grid search: sample 8 compass directions at 10km/20km/30km increments from original point
+- Run conflict check on each candidate
+- Return the lowest-risk candidate as the recommendation
+- Include reasoning string: what changed and why
+
+### B5. API Endpoints (1 hr)
+
+- `GET /health` — health check + model status
+- `GET /api/layers` — all layers as GeoJSON (contract above)
+- `POST /api/conflict-check` — full analysis pipeline (contract above)
+- `GET /api/layer/{layer_id}` — individual layer (for lazy loading if needed)
+
+### B-Summary: Backend Deliverables Checklist
+
+- [ ] FastAPI project scaffold with CORS
+- [ ] 4 real GeoJSON datasets downloaded and loaded
+- [ ] GeoDataService: loads, caches, serves layers
+- [ ] ConflictEngine: overlap + buffer + area calculations
+- [ ] XGBoost conflict scorer trained on synthetic data
+- [ ] Recommendation engine (grid-search for lower-risk position)
+- [ ] All API endpoints working and returning contract-compliant JSON
+
+---
+
+## 🔀 Sync Points & Timeline
+
+```
+HOUR   PARTNER (Frontend)          KRISH (Backend)            SYNC
+─────  ────────────────────────    ─────────────────────────  ──────
+ 0-1   A1: Setup + design system   B1: Scaffold + data grab   
+ 1-2   A2: Map component           B1: GeoJSON ingestion      
+ 2-3   A2: Layer rendering         B2: Conflict engine        🔗 Test GET /api/layers
+ 3-4   A3: Layer controls          B2: Buffer analysis        
+ 4-5   A4: Drop-a-pin UX           B3: Synthetic data + ML   
+ 5-7   A5: Conflict panel          B3-B4: Scorer + recs      🔗 Test POST /api/conflict-check
+ 7-8   A6: Polish + animations     B5: API cleanup            
+ 8-9   ─── INTEGRATION TEST + DEMO PREP ───                   🔗 Full run-through
+```
+
+> [!IMPORTANT]
+> **Two critical sync points:**
+> 1. **Hour ~3:** Partner should be able to hit `GET /api/layers` and see real GeoJSON on the map
+> 2. **Hour ~6:** Partner should be able to POST to `/api/conflict-check` and render the results
+
+### How to Work in Parallel
+
+- **Partner:** Mock the API responses locally until the backend is ready. Copy the JSON examples from the contract section above into a `mock-data.js` file and build the UI against those. When the backend is live, just swap the fetch URL.
+- **Krish:** Test endpoints with `curl` or the FastAPI `/docs` Swagger UI. Don't worry about CORS until integration.
+- **Both:** Agree on the contract JSON shapes NOW (above) and don't change them without a quick sync.
+
+---
+
+## Verification Plan
+
+### Automated
+```bash
+# Backend health
+curl http://localhost:8000/health
+
+# Layers load
+curl http://localhost:8000/api/layers | python -m json.tool | head -20
+
+# Conflict check
+curl -X POST http://localhost:8000/api/conflict-check \
+  -H "Content-Type: application/json" \
+  -d '{"project_type":"offshore_wind","latitude":42.2,"longitude":-70.5,"radius_km":25}' \
+  | python -m json.tool
+```
+
+### Manual (Full Demo Flow)
+1. Open frontend → map loads with all layers visible
+2. Toggle layers on/off → each layer shows/hides
+3. Click "New Project" → enter placement mode
+4. Click on map near an MPA → set type to "Offshore Wind", radius 25km
+5. Click "Analyze" → conflict panel slides in with results
+6. Verify conflicts match expected overlaps
+7. Click "Apply Suggestion" → map flies to new location → re-analyzes → lower score
