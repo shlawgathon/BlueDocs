@@ -4,8 +4,10 @@ import { useRef, useCallback, useEffect, useState } from "react";
 import Map, {
   Source,
   Layer,
+  Marker,
   MapRef,
   MapMouseEvent,
+  MarkerDragEvent,
   Popup,
 } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -21,6 +23,26 @@ import { ProjectModal } from "@/components/ProjectModal";
 import { ConflictPanel } from "@/components/ConflictPanel";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+
+type MapStyle = "dark" | "light" | "satellite";
+
+interface ProjectConfig {
+  projectType: string;
+  radiusKm: number;
+  name: string;
+}
+
+const MAP_STYLES: Record<MapStyle, string> = {
+  dark: "mapbox://styles/mapbox/dark-v11",
+  light: "mapbox://styles/mapbox/light-v11",
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+};
+
+const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
+  projectType: "offshore_wind",
+  radiusKm: 25,
+  name: "",
+};
 
 export default function MapDashboard() {
   const mapRef = useRef<MapRef>(null);
@@ -39,6 +61,9 @@ export default function MapDashboard() {
   const [analysisResult, setAnalysisResult] = useState<ConflictCheckResponse | null>(null);
   const [showConflictPanel, setShowConflictPanel] = useState(false);
   const [hoveredConflictLayer, setHoveredConflictLayer] = useState<string | null>(null);
+  const [mapStyle, setMapStyle] = useState<MapStyle>("dark");
+  const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
+  const [modalMode, setModalMode] = useState<"new" | "edit">("new");
 
   // Popup
   const [popup, setPopup] = useState<{
@@ -67,10 +92,34 @@ export default function MapDashboard() {
 
   // Enter placement mode
   const startPlacement = useCallback(() => {
+    setModalMode("new");
     setPlacementMode(true);
+    setShowModal(false);
     setShowConflictPanel(false);
     setAnalysisResult(null);
+    setHoveredConflictLayer(null);
     setPinLocation(null);
+    setProjectConfig({ ...DEFAULT_PROJECT_CONFIG });
+  }, []);
+
+  const openEditProject = useCallback(() => {
+    if (!pinLocation) return;
+    setModalMode("edit");
+    setPlacementMode(false);
+    setShowConflictPanel(false);
+    setHoveredConflictLayer(null);
+    setShowModal(true);
+  }, [pinLocation]);
+
+  const removeProject = useCallback(() => {
+    setPlacementMode(false);
+    setShowModal(false);
+    setShowConflictPanel(false);
+    setAnalysisResult(null);
+    setHoveredConflictLayer(null);
+    setPinLocation(null);
+    setProjectConfig({ ...DEFAULT_PROJECT_CONFIG });
+    setPopup(null);
   }, []);
 
   // Map click
@@ -93,11 +142,20 @@ export default function MapDashboard() {
         return;
       }
       setPinLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      setModalMode("new");
       setShowModal(true);
       setPlacementMode(false);
+      setPopup(null);
     },
     [placementMode]
   );
+
+  const onMarkerDragEnd = useCallback((event: MarkerDragEvent) => {
+    setPinLocation({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+    setShowConflictPanel(false);
+    setAnalysisResult(null);
+    setHoveredConflictLayer(null);
+  }, []);
 
   // Run analysis
   const runAnalysis = useCallback(
@@ -105,6 +163,7 @@ export default function MapDashboard() {
       if (!pinLocation) return;
       setAnalyzing(true);
       setShowModal(false);
+      setProjectConfig({ projectType, radiusKm, name });
       try {
         const result = await checkConflicts({
           project_type: projectType,
@@ -144,25 +203,30 @@ export default function MapDashboard() {
     setAnalyzing(true);
     try {
       const result = await checkConflicts({
-        project_type: "offshore_wind",
+        project_type: projectConfig.projectType,
         latitude: newLat,
         longitude: newLon,
         radius_km: analysisResult.project_circle.radius_km,
+        name: projectConfig.name || undefined,
       });
       setAnalysisResult(result);
+      setProjectConfig((prev) => ({
+        ...prev,
+        radiusKm: result.project_circle.radius_km,
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Re-analysis failed");
     } finally {
       setAnalyzing(false);
     }
-  }, [analysisResult]);
+  }, [analysisResult, projectConfig.name, projectConfig.projectType]);
 
   // Create circle GeoJSON from pin
   const circleGeoJSON = pinLocation
     ? createCircleGeoJSON(
         pinLocation.lng,
         pinLocation.lat,
-        analysisResult?.project_circle.radius_km ?? 25
+        analysisResult?.project_circle.radius_km ?? projectConfig.radiusKm
       )
     : null;
 
@@ -170,7 +234,9 @@ export default function MapDashboard() {
     <div className="relative h-screen w-screen overflow-hidden bg-[#0A1628]">
       <Header
         onNewProject={startPlacement}
+        onMapStyleChange={setMapStyle}
         placementMode={placementMode}
+        mapStyle={mapStyle}
       />
 
       {/* Loading overlay */}
@@ -199,7 +265,7 @@ export default function MapDashboard() {
           zoom: 6,
         }}
         style={{ width: "100%", height: "100%" }}
-        mapStyle="mapbox://styles/mapbox/dark-v11"
+        mapStyle={MAP_STYLES[mapStyle]}
         cursor={placementMode ? "crosshair" : "grab"}
         onClick={onMapClick}
         interactiveLayerIds={layers
@@ -276,36 +342,22 @@ export default function MapDashboard() {
           </Source>
         )}
 
-        {/* Pin marker */}
+        {/* Pin marker (draggable for editing) */}
         {pinLocation && (
-          <Source
-            id="pin-marker"
-            type="geojson"
-            data={{
-              type: "FeatureCollection",
-              features: [
-                {
-                  type: "Feature",
-                  properties: {},
-                  geometry: {
-                    type: "Point",
-                    coordinates: [pinLocation.lng, pinLocation.lat],
-                  },
-                },
-              ],
-            }}
+          <Marker
+            longitude={pinLocation.lng}
+            latitude={pinLocation.lat}
+            draggable
+            onDragEnd={onMarkerDragEnd}
           >
-            <Layer
-              id="pin-marker-layer"
-              type="circle"
-              paint={{
-                "circle-radius": 8,
-                "circle-color": "#14B8A6",
-                "circle-stroke-width": 3,
-                "circle-stroke-color": "#ffffff",
-              }}
-            />
-          </Source>
+            <button
+              type="button"
+              title="Drag to reposition project"
+              className="group relative h-5 w-5 rounded-full border-2 border-white bg-[#14B8A6] shadow-[0_0_24px_rgba(20,184,166,0.6)]"
+            >
+              <span className="absolute -inset-2 rounded-full border border-[#14B8A6]/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+            </button>
+          </Marker>
         )}
 
         {popup && (
@@ -334,9 +386,14 @@ export default function MapDashboard() {
           lat={pinLocation.lat}
           lng={pinLocation.lng}
           onAnalyze={runAnalysis}
+          initialValues={projectConfig}
+          title={modalMode === "edit" ? "Edit Project" : "Project Configuration"}
+          actionLabel={modalMode === "edit" ? "Update Analysis" : "Analyze Conflicts"}
           onClose={() => {
             setShowModal(false);
-            setPinLocation(null);
+            if (modalMode === "new") {
+              setPinLocation(null);
+            }
           }}
         />
       )}
@@ -349,7 +406,7 @@ export default function MapDashboard() {
           onClose={() => {
             setShowConflictPanel(false);
             setAnalysisResult(null);
-            setPinLocation(null);
+            setHoveredConflictLayer(null);
           }}
           onApplySuggestion={applySuggestion}
           onConflictHover={setHoveredConflictLayer}
@@ -360,6 +417,29 @@ export default function MapDashboard() {
       {placementMode && (
         <div className="absolute bottom-10 left-1/2 z-30 -translate-x-1/2 animate-fade-in-up rounded-full border border-white/10 bg-black/80 px-6 py-3 text-sm text-slate-300 backdrop-blur-md">
           Click anywhere on the map to propose a project
+        </div>
+      )}
+
+      {/* Project quick actions */}
+      {pinLocation && !showModal && (
+        <div className="absolute right-6 bottom-6 z-30 rounded-xl border border-white/10 bg-black/70 p-2 backdrop-blur-md">
+          <p className="mb-2 px-1 text-[11px] text-slate-400">
+            Drag marker to move project
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openEditProject}
+              className="rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]"
+            >
+              Edit Project
+            </button>
+            <button
+              onClick={removeProject}
+              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       )}
 

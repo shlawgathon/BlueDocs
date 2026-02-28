@@ -2,21 +2,15 @@
 
 interface HeaderProps {
   onNewProject: () => void;
-  onEditProject: () => void;
-  onRemoveProject: () => void;
   onMapStyleChange: (style: "dark" | "light" | "satellite") => void;
   placementMode: boolean;
-  hasProject: boolean;
   mapStyle: "dark" | "light" | "satellite";
 }
 
 export function Header({
   onNewProject,
-  onEditProject,
-  onRemoveProject,
   onMapStyleChange,
   placementMode,
-  hasProject,
   mapStyle,
 }: HeaderProps) {
   return (
@@ -47,30 +41,13 @@ export function Header({
           onChange={(e) =>
             onMapStyleChange(e.target.value as "dark" | "light" | "satellite")
           }
-          className="hidden rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs font-medium text-slate-200 outline-none transition-colors focus:border-[#14B8A6] md:block"
+          className="rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs font-medium text-slate-200 outline-none transition-colors focus:border-[#14B8A6]"
           aria-label="Map style"
         >
           <option value="dark">Dark</option>
           <option value="light">Light</option>
           <option value="satellite">Satellite</option>
         </select>
-
-        {hasProject && (
-          <>
-            <button
-              onClick={onEditProject}
-              className="hidden rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.08] md:block"
-            >
-              Edit
-            </button>
-            <button
-              onClick={onRemoveProject}
-              className="hidden rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 md:block"
-            >
-              Remove
-            </button>
-          </>
-        )}
 
         <button
           onClick={onNewProject}
