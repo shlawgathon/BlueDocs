@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Stellwagen Bank National Marine Sanctuary", "Level_of_P": "No Take", "Gov_Level": "Federal" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.6, 42.1], [-70.2, 42.1], [-70.0, 42.3], [-70.0, 42.5], [-70.3, 42.6], [-70.6, 42.5], [-70.6, 42.1]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Monitor National Marine Sanctuary", "Level_of_P": "No Take", "Gov_Level": "Federal" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-75.5, 36.95], [-75.35, 36.95], [-75.35, 37.05], [-75.5, 37.05], [-75.5, 36.95]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Gray's Reef National Marine Sanctuary", "Level_of_P": "Natural Heritage", "Gov_Level": "Federal" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-80.95, 31.35], [-80.75, 31.35], [-80.75, 31.45], [-80.95, 31.45], [-80.95, 31.35]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Block Island Sound Transit Zone", "Level_of_P": "Sustainable Production", "Gov_Level": "State" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-71.7, 41.0], [-71.4, 41.0], [-71.4, 41.2], [-71.7, 41.2], [-71.7, 41.0]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Northeast Canyons and Seamounts Marine National Monument", "Level_of_P": "No Take", "Gov_Level": "Federal" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-68.5, 39.5], [-67.5, 39.5], [-67.5, 40.0], [-68.0, 40.2], [-68.5, 40.0], [-68.5, 39.5]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Buzzards Bay MPA", "Level_of_P": "No Harvest", "Gov_Level": "State" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-71.05, 41.5], [-70.8, 41.5], [-70.8, 41.65], [-71.05, 41.65], [-71.05, 41.5]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Hudson Shelf Valley MPA", "Level_of_P": "Habitat Protection", "Gov_Level": "Federal" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-73.0, 39.8], [-72.5, 39.8], [-72.4, 40.1], [-72.8, 40.2], [-73.1, 40.0], [-73.0, 39.8]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Cape Cod National Seashore", "Level_of_P": "Natural Heritage", "Gov_Level": "Federal" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.1, 41.8], [-69.9, 41.8], [-69.9, 42.1], [-70.05, 42.1], [-70.1, 41.95], [-70.1, 41.8]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Delaware Bay MPA", "Level_of_P": "Sustainable Production", "Gov_Level": "State" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-75.4, 38.7], [-75.1, 38.7], [-75.0, 38.9], [-75.2, 39.0], [-75.4, 38.9], [-75.4, 38.7]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "Site_Name": "Nantucket Sound Habitat Area", "Level_of_P": "Habitat Protection", "Gov_Level": "State" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-70.4, 41.4], [-69.9, 41.4], [-69.9, 41.6], [-70.4, 41.6], [-70.4, 41.4]]] }
+    }
+  ]
+}

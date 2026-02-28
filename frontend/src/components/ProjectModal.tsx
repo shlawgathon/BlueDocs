@@ -2,11 +2,20 @@
 
 import { useState } from "react";
 
+interface ProjectFormValues {
+  projectType: string;
+  radiusKm: number;
+  name: string;
+}
+
 interface ProjectModalProps {
   lat: number;
   lng: number;
   onAnalyze: (projectType: string, radiusKm: number, name: string) => void;
   onClose: () => void;
+  title?: string;
+  actionLabel?: string;
+  initialValues?: ProjectFormValues;
 }
 
 const PROJECT_TYPES = [
@@ -16,10 +25,28 @@ const PROJECT_TYPES = [
   { value: "cable", label: "Subsea Cable" },
 ];
 
-export function ProjectModal({ lat, lng, onAnalyze, onClose }: ProjectModalProps) {
-  const [projectType, setProjectType] = useState("offshore_wind");
-  const [radiusKm, setRadiusKm] = useState(25);
-  const [name, setName] = useState("");
+function formatLat(lat: number): string {
+  return `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? "N" : "S"}`;
+}
+
+function formatLng(lng: number): string {
+  return `${Math.abs(lng).toFixed(4)}°${lng >= 0 ? "E" : "W"}`;
+}
+
+export function ProjectModal({
+  lat,
+  lng,
+  onAnalyze,
+  onClose,
+  title = "Project Configuration",
+  actionLabel = "Analyze Conflicts",
+  initialValues,
+}: ProjectModalProps) {
+  const [projectType, setProjectType] = useState(
+    initialValues?.projectType ?? "offshore_wind"
+  );
+  const [radiusKm, setRadiusKm] = useState(initialValues?.radiusKm ?? 25);
+  const [name, setName] = useState(initialValues?.name ?? "");
 
   return (
     <>
@@ -32,7 +59,7 @@ export function ProjectModal({ lat, lng, onAnalyze, onClose }: ProjectModalProps
       {/* Modal */}
       <div className="absolute top-1/2 left-1/2 z-40 w-[340px] -translate-x-1/2 -translate-y-1/2 animate-scale-in rounded-xl border border-white/10 bg-[#0A1628]/90 p-6 shadow-[0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Project Configuration</h2>
+          <h2 className="text-lg font-semibold text-white">{title}</h2>
           <button
             onClick={onClose}
             className="text-slate-500 transition-colors hover:text-white"
@@ -46,7 +73,7 @@ export function ProjectModal({ lat, lng, onAnalyze, onClose }: ProjectModalProps
 
         {/* Coordinates */}
         <p className="mb-5 text-xs text-slate-500">
-          {lat.toFixed(4)}°N, {Math.abs(lng).toFixed(4)}°W
+          {formatLat(lat)}, {formatLng(lng)}
         </p>
 
         {/* Project Type */}
@@ -102,7 +129,7 @@ export function ProjectModal({ lat, lng, onAnalyze, onClose }: ProjectModalProps
           onClick={() => onAnalyze(projectType, radiusKm, name)}
           className="w-full rounded-lg bg-[#14B8A6] py-3 text-sm font-semibold text-[#0A1628] shadow-[0_0_15px_rgba(20,184,166,0.3)] transition-all hover:shadow-[0_0_25px_rgba(20,184,166,0.5)]"
         >
-          Analyze Conflicts
+          {actionLabel}
         </button>
       </div>
     </>
