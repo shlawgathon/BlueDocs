@@ -4,6 +4,7 @@ import type { ConflictCheckResponse } from "@/lib/types";
 
 interface ConflictPanelProps {
   result: ConflictCheckResponse;
+  projectName?: string;
   analyzing: boolean;
   onClose: () => void;
   onApplySuggestion: () => void;
@@ -58,6 +59,7 @@ function riskGradient(score: number): string {
 
 export function ConflictPanel({
   result,
+  projectName,
   analyzing,
   onClose,
   onApplySuggestion,
@@ -71,6 +73,9 @@ export function ConflictPanel({
       <div className="mb-6 flex items-start justify-between border-b border-white/5 pb-4">
         <div>
           <h2 className="text-lg font-semibold text-white">Conflict Analysis</h2>
+          {projectName && (
+            <p className="mt-1 text-sm font-medium text-slate-300">{projectName}</p>
+          )}
           <p className="mt-1 text-xs text-slate-500">
             {result.project_circle.center[0].toFixed(2)}°N,{" "}
             {Math.abs(result.project_circle.center[1]).toFixed(2)}°W ·{" "}

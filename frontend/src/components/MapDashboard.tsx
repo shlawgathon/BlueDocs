@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import Map, {
   Source,
   Layer,
@@ -25,11 +25,29 @@ import { ConflictPanel } from "@/components/ConflictPanel";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 type MapStyle = "dark" | "light" | "satellite";
+type ProjectShapeType = "circle" | "square" | "hexagon" | "drawn";
 
 interface ProjectConfig {
   projectType: string;
   radiusKm: number;
   name: string;
+  shapeType: ProjectShapeType;
+}
+
+interface ProjectRecord {
+  id: string;
+  lat: number;
+  lng: number;
+  config: ProjectConfig;
+  analysisResult: ConflictCheckResponse | null;
+  customPolygon?: [number, number][];
+}
+
+interface PopupState {
+  lng: number;
+  lat: number;
+  text: string;
+  mode: "hover" | "click";
 }
 
 const MAP_STYLES: Record<MapStyle, string> = {
@@ -42,6 +60,7 @@ const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   projectType: "offshore_wind",
   radiusKm: 25,
   name: "",
+  shapeType: "circle",
 };
 
 export default function MapDashboard() {
@@ -55,180 +74,682 @@ export default function MapDashboard() {
 
   // Interaction state
   const [placementMode, setPlacementMode] = useState(false);
-  const [pinLocation, setPinLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<ConflictCheckResponse | null>(null);
+  const [modalMode, setModalMode] = useState<"new" | "edit">("new");
+  const [draftLocation, setDraftLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [analyzingProjectId, setAnalyzingProjectId] = useState<string | null>(null);
   const [showConflictPanel, setShowConflictPanel] = useState(false);
   const [hoveredConflictLayer, setHoveredConflictLayer] = useState<string | null>(null);
   const [mapStyle, setMapStyle] = useState<MapStyle>("dark");
-  const [projectConfig, setProjectConfig] = useState<ProjectConfig>(DEFAULT_PROJECT_CONFIG);
-  const [modalMode, setModalMode] = useState<"new" | "edit">("new");
+
+  // Draw mode
+  const [shapeDrawProjectId, setShapeDrawProjectId] = useState<string | null>(null);
+  const [shapeDraftPoints, setShapeDraftPoints] = useState<[number, number][]>([]);
 
   // Popup
-  const [popup, setPopup] = useState<{
-    lng: number;
-    lat: number;
-    text: string;
-  } | null>(null);
+  const [popup, setPopup] = useState<PopupState | null>(null);
+
+  const analyzing = Boolean(analyzingProjectId);
+  const isDrawingShape = shapeDrawProjectId !== null;
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId]
+  );
+
+  const editingProject = useMemo(
+    () => projects.find((project) => project.id === editingProjectId) ?? null,
+    [editingProjectId, projects]
+  );
+
+  const selectedAnalysisResult = selectedProject?.analysisResult ?? null;
+
+  const activeProjectLayerIds = useMemo(
+    () => projects.map((project) => `project-${project.id}-fill`),
+    [projects]
+  );
+
+  const interactiveLayerIds = useMemo(() => {
+    const dataLayerIds = layers
+      .filter((layer) => layerVisibility[layer.id])
+      .map((layer) => `${layer.id}-layer`);
+    return [...dataLayerIds, ...activeProjectLayerIds];
+  }, [activeProjectLayerIds, layerVisibility, layers]);
+
+  const drawingLineGeoJSON = useMemo<GeoJSON.FeatureCollection | null>(() => {
+    if (!isDrawingShape || shapeDraftPoints.length < 2) return null;
+
+    return {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates: shapeDraftPoints,
+          },
+        },
+      ],
+    };
+  }, [isDrawingShape, shapeDraftPoints]);
+
+  const drawingPolygonGeoJSON = useMemo<GeoJSON.FeatureCollection | null>(() => {
+    if (!isDrawingShape || shapeDraftPoints.length < 3) return null;
+
+    const closed = closeRing(shapeDraftPoints);
+    return {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [closed],
+          },
+        },
+      ],
+    };
+  }, [isDrawingShape, shapeDraftPoints]);
 
   // Fetch layers on mount
   useEffect(() => {
     fetchLayers()
       .then((data) => {
         setLayers(data.layers);
-        const vis: Record<string, boolean> = {};
-        data.layers.forEach((l) => (vis[l.id] = l.visible));
-        setLayerVisibility(vis);
+        const visibility: Record<string, boolean> = {};
+        data.layers.forEach((layer) => {
+          visibility[layer.id] = layer.visible;
+        });
+        setLayerVisibility(visibility);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  // Toggle layer
   const toggleLayer = useCallback((layerId: string) => {
     setLayerVisibility((prev) => ({ ...prev, [layerId]: !prev[layerId] }));
   }, []);
 
-  // Enter placement mode
   const startPlacement = useCallback(() => {
     setModalMode("new");
     setPlacementMode(true);
     setShowModal(false);
     setShowConflictPanel(false);
-    setAnalysisResult(null);
     setHoveredConflictLayer(null);
-    setPinLocation(null);
-    setProjectConfig({ ...DEFAULT_PROJECT_CONFIG });
-  }, []);
-
-  const openEditProject = useCallback(() => {
-    if (!pinLocation) return;
-    setModalMode("edit");
-    setPlacementMode(false);
-    setShowConflictPanel(false);
-    setHoveredConflictLayer(null);
-    setShowModal(true);
-  }, [pinLocation]);
-
-  const removeProject = useCallback(() => {
-    setPlacementMode(false);
-    setShowModal(false);
-    setShowConflictPanel(false);
-    setAnalysisResult(null);
-    setHoveredConflictLayer(null);
-    setPinLocation(null);
-    setProjectConfig({ ...DEFAULT_PROJECT_CONFIG });
+    setDraftLocation(null);
+    setEditingProjectId(null);
     setPopup(null);
+    setShapeDrawProjectId(null);
+    setShapeDraftPoints([]);
   }, []);
 
-  // Map click
-  const onMapClick = useCallback(
-    (e: MapMouseEvent) => {
-      if (!placementMode) {
-        // Check if clicking a feature for popup
-        const features = mapRef.current?.queryRenderedFeatures(e.point);
-        if (features && features.length > 0) {
-          const f = features[0];
-          const name =
-            f.properties?.Site_Name ||
-            f.properties?.LEASE_NUMB ||
-            f.properties?.NAME ||
-            f.properties?.name ||
-            f.layer?.id ||
-            "Selected feature";
-          setPopup({ lng: e.lngLat.lng, lat: e.lngLat.lat, text: String(name) });
-        }
-        return;
-      }
-      setPinLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-      setModalMode("new");
-      setShowModal(true);
+  const startDrawingShapeForProject = useCallback(
+    (projectId: string) => {
+      const target = projects.find((project) => project.id === projectId);
+      if (!target) return;
+
+      setSelectedProjectId(projectId);
+      setShapeDrawProjectId(projectId);
+      setShapeDraftPoints(
+        target.customPolygon && target.customPolygon.length > 3
+          ? target.customPolygon.slice(0, -1)
+          : []
+      );
       setPlacementMode(false);
+      setShowModal(false);
+      setShowConflictPanel(false);
+      setHoveredConflictLayer(null);
       setPopup(null);
     },
-    [placementMode]
+    [projects]
   );
 
-  const onMarkerDragEnd = useCallback((event: MarkerDragEvent) => {
-    setPinLocation({ lat: event.lngLat.lat, lng: event.lngLat.lng });
-    setShowConflictPanel(false);
-    setAnalysisResult(null);
-    setHoveredConflictLayer(null);
+  const cancelDrawingShape = useCallback(() => {
+    setShapeDrawProjectId(null);
+    setShapeDraftPoints([]);
   }, []);
 
-  // Run analysis
+  const undoShapePoint = useCallback(() => {
+    setShapeDraftPoints((prev) => prev.slice(0, -1));
+  }, []);
+
+  const removeShapePoint = useCallback((index: number) => {
+    setShapeDraftPoints((prev) => prev.filter((_, pointIndex) => pointIndex !== index));
+  }, []);
+
+  const finishDrawingShape = useCallback(() => {
+    if (!shapeDrawProjectId) return;
+
+    if (shapeDraftPoints.length < 3) {
+      setError("Add at least 3 points before finishing the drawn shape.");
+      return;
+    }
+
+    const closed = closeRing(shapeDraftPoints);
+    const centroid = polygonCentroid(closed);
+    const estimatedRadius = Math.max(1, estimateRadiusFromPolygonKm(closed, centroid));
+
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === shapeDrawProjectId
+          ? {
+              ...project,
+              lng: centroid[0],
+              lat: centroid[1],
+              customPolygon: closed,
+              analysisResult: null,
+              config: {
+                ...project.config,
+                shapeType: "drawn",
+                radiusKm: Number(estimatedRadius.toFixed(1)),
+              },
+            }
+          : project
+      )
+    );
+
+    setShowConflictPanel(false);
+    setHoveredConflictLayer(null);
+    setShapeDrawProjectId(null);
+    setShapeDraftPoints([]);
+  }, [shapeDraftPoints, shapeDrawProjectId]);
+
+  const openEditProject = useCallback(
+    (projectId?: string) => {
+      const id = projectId ?? selectedProjectId;
+      if (!id) return;
+
+      const target = projects.find((project) => project.id === id);
+      if (!target) return;
+
+      setSelectedProjectId(id);
+      setEditingProjectId(id);
+      setModalMode("edit");
+      setPlacementMode(false);
+      setShowConflictPanel(false);
+      setHoveredConflictLayer(null);
+      setShowModal(true);
+      setPopup(null);
+      setShapeDrawProjectId(null);
+      setShapeDraftPoints([]);
+    },
+    [projects, selectedProjectId]
+  );
+
+  const removeProject = useCallback(
+    (projectId?: string) => {
+      const id = projectId ?? selectedProjectId;
+      if (!id) return;
+
+      const nextProjects = projects.filter((project) => project.id !== id);
+      const nextSelectedId = selectedProjectId === id ? (nextProjects[0]?.id ?? null) : selectedProjectId;
+      const nextSelected = nextProjects.find((project) => project.id === nextSelectedId) ?? null;
+
+      setProjects(nextProjects);
+      setSelectedProjectId(nextSelectedId);
+      setShowConflictPanel(Boolean(nextSelected?.analysisResult));
+
+      if (editingProjectId === id) {
+        setShowModal(false);
+        setModalMode("new");
+        setEditingProjectId(null);
+      }
+
+      if (analyzingProjectId === id) {
+        setAnalyzingProjectId(null);
+      }
+
+      if (shapeDrawProjectId === id) {
+        setShapeDrawProjectId(null);
+        setShapeDraftPoints([]);
+      }
+
+      setHoveredConflictLayer(null);
+      setPopup(null);
+    },
+    [analyzingProjectId, editingProjectId, projects, selectedProjectId, shapeDrawProjectId]
+  );
+
+  const updateProjectShapeType = useCallback(
+    (projectId: string, shapeType: ProjectShapeType) => {
+      const target = projects.find((project) => project.id === projectId);
+      if (!target) return;
+
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === projectId
+            ? {
+                ...project,
+                analysisResult: null,
+                customPolygon:
+                  shapeType === "drawn" ? project.customPolygon : undefined,
+                config: {
+                  ...project.config,
+                  shapeType,
+                },
+              }
+            : project
+        )
+      );
+      setShowConflictPanel(false);
+      setHoveredConflictLayer(null);
+
+      if (shapeType === "drawn" && !target.customPolygon) {
+        startDrawingShapeForProject(projectId);
+      }
+    },
+    [projects, startDrawingShapeForProject]
+  );
+
   const runAnalysis = useCallback(
-    async (projectType: string, radiusKm: number, name: string) => {
-      if (!pinLocation) return;
-      setAnalyzing(true);
+    async (
+      projectType: string,
+      radiusKm: number,
+      name: string,
+      shapeType: ProjectShapeType
+    ) => {
+      const trimmedName = name.trim();
+
+      let preparedProject: ProjectRecord | null = null;
+
+      if (modalMode === "new") {
+        if (!draftLocation) return;
+
+        const projectId = createProjectId();
+        const resolvedName = trimmedName || `Project ${projects.length + 1}`;
+
+        preparedProject = {
+          id: projectId,
+          lat: draftLocation.lat,
+          lng: draftLocation.lng,
+          config: {
+            projectType,
+            radiusKm,
+            name: resolvedName,
+            shapeType,
+          },
+          analysisResult: null,
+        };
+
+        setProjects((prev) => [preparedProject!, ...prev]);
+        setSelectedProjectId(projectId);
+      } else {
+        const id = editingProjectId ?? selectedProjectId;
+        if (!id) return;
+
+        const existing = projects.find((project) => project.id === id);
+        if (!existing) return;
+
+        const resolvedName = trimmedName || existing.config.name || `Project ${projects.length}`;
+
+        preparedProject = {
+          ...existing,
+          customPolygon: shapeType === "drawn" ? existing.customPolygon : undefined,
+          analysisResult: null,
+          config: {
+            projectType,
+            radiusKm,
+            name: resolvedName,
+            shapeType,
+          },
+        };
+
+        setProjects((prev) =>
+          prev.map((project) =>
+            project.id === id ? preparedProject! : project
+          )
+        );
+        setSelectedProjectId(id);
+      }
+
+      if (!preparedProject) return;
+
       setShowModal(false);
-      setProjectConfig({ projectType, radiusKm, name });
+      setPlacementMode(false);
+      setShowConflictPanel(false);
+      setHoveredConflictLayer(null);
+      setPopup(null);
+
+      if (preparedProject.config.shapeType === "drawn" && !preparedProject.customPolygon) {
+        setAnalyzingProjectId(null);
+        setModalMode("new");
+        setDraftLocation(null);
+        setEditingProjectId(null);
+        startDrawingShapeForProject(preparedProject.id);
+        return;
+      }
+
+      const analysisInput = getProjectAnalysisInput(preparedProject);
+      setAnalyzingProjectId(preparedProject.id);
+
       try {
         const result = await checkConflicts({
-          project_type: projectType,
-          latitude: pinLocation.lat,
-          longitude: pinLocation.lng,
-          radius_km: radiusKm,
-          name: name || undefined,
+          project_type: preparedProject.config.projectType,
+          latitude: analysisInput.lat,
+          longitude: analysisInput.lng,
+          radius_km: analysisInput.radiusKm,
+          name: preparedProject.config.name || undefined,
         });
-        setAnalysisResult(result);
+
+        setProjects((prev) =>
+          prev.map((project) =>
+            project.id === preparedProject!.id
+              ? {
+                  ...project,
+                  lat: analysisInput.lat,
+                  lng: analysisInput.lng,
+                  analysisResult: result,
+                  config: {
+                    ...project.config,
+                    radiusKm: result.project_circle.radius_km,
+                  },
+                }
+              : project
+          )
+        );
         setShowConflictPanel(true);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Analysis failed");
       } finally {
-        setAnalyzing(false);
+        setAnalyzingProjectId(null);
+        setModalMode("new");
+        setDraftLocation(null);
+        setEditingProjectId(null);
       }
     },
-    [pinLocation]
+    [draftLocation, editingProjectId, modalMode, projects, selectedProjectId, startDrawingShapeForProject]
   );
 
-  // Apply suggestion
-  const applySuggestion = useCallback(async () => {
-    if (!analysisResult?.recommendation.suggested_lat) return;
-    const rec = analysisResult.recommendation;
-    const newLat = rec.suggested_lat!;
-    const newLon = rec.suggested_lon!;
+  const reanalyzeProject = useCallback(
+    async (projectId: string) => {
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) return;
 
-    // Fly to new location
+      if (project.config.shapeType === "drawn" && !project.customPolygon) {
+        startDrawingShapeForProject(projectId);
+        return;
+      }
+
+      const analysisInput = getProjectAnalysisInput(project);
+
+      setSelectedProjectId(projectId);
+      setAnalyzingProjectId(projectId);
+      setShowConflictPanel(false);
+      setHoveredConflictLayer(null);
+      setPopup(null);
+
+      try {
+        const result = await checkConflicts({
+          project_type: project.config.projectType,
+          latitude: analysisInput.lat,
+          longitude: analysisInput.lng,
+          radius_km: analysisInput.radiusKm,
+          name: project.config.name || undefined,
+        });
+
+        setProjects((prev) =>
+          prev.map((item) =>
+            item.id === projectId
+              ? {
+                  ...item,
+                  lat: analysisInput.lat,
+                  lng: analysisInput.lng,
+                  analysisResult: result,
+                  config: {
+                    ...item.config,
+                    radiusKm: result.project_circle.radius_km,
+                  },
+                }
+              : item
+          )
+        );
+        setShowConflictPanel(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Analysis failed");
+      } finally {
+        setAnalyzingProjectId(null);
+      }
+    },
+    [projects, startDrawingShapeForProject]
+  );
+
+  const applySuggestion = useCallback(async () => {
+    if (!selectedProject?.analysisResult?.recommendation.suggested_lat) return;
+
+    const recommendation = selectedProject.analysisResult.recommendation;
+    const newLat = recommendation.suggested_lat;
+    const newLon = recommendation.suggested_lon;
+
+    if (newLat == null || newLon == null) return;
+
     mapRef.current?.flyTo({
       center: [newLon, newLat],
       zoom: 8,
       duration: 2000,
     });
 
-    setPinLocation({ lat: newLat, lng: newLon });
+    const deltaLat = newLat - selectedProject.lat;
+    const deltaLng = newLon - selectedProject.lng;
 
-    // Re-analyze at new location
-    setAnalyzing(true);
+    const movedProject: ProjectRecord = {
+      ...selectedProject,
+      lat: newLat,
+      lng: newLon,
+      customPolygon: selectedProject.customPolygon
+        ? shiftPolygon(selectedProject.customPolygon, deltaLng, deltaLat)
+        : selectedProject.customPolygon,
+    };
+
+    const analysisInput = getProjectAnalysisInput(movedProject);
+
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === selectedProject.id
+          ? {
+              ...movedProject,
+              lat: analysisInput.lat,
+              lng: analysisInput.lng,
+            }
+          : project
+      )
+    );
+
+    setAnalyzingProjectId(selectedProject.id);
+
     try {
       const result = await checkConflicts({
-        project_type: projectConfig.projectType,
-        latitude: newLat,
-        longitude: newLon,
-        radius_km: analysisResult.project_circle.radius_km,
-        name: projectConfig.name || undefined,
+        project_type: movedProject.config.projectType,
+        latitude: analysisInput.lat,
+        longitude: analysisInput.lng,
+        radius_km: analysisInput.radiusKm,
+        name: movedProject.config.name || undefined,
       });
-      setAnalysisResult(result);
-      setProjectConfig((prev) => ({
-        ...prev,
-        radiusKm: result.project_circle.radius_km,
-      }));
+
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === selectedProject.id
+            ? {
+                ...project,
+                analysisResult: result,
+                config: {
+                  ...project.config,
+                  radiusKm: result.project_circle.radius_km,
+                },
+              }
+            : project
+        )
+      );
+      setShowConflictPanel(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Re-analysis failed");
     } finally {
-      setAnalyzing(false);
+      setAnalyzingProjectId(null);
     }
-  }, [analysisResult, projectConfig.name, projectConfig.projectType]);
+  }, [selectedProject]);
 
-  // Create circle GeoJSON from pin
-  const circleGeoJSON = pinLocation
-    ? createCircleGeoJSON(
-        pinLocation.lng,
-        pinLocation.lat,
-        analysisResult?.project_circle.radius_km ?? projectConfig.radiusKm
-      )
-    : null;
+  const onMapClick = useCallback(
+    (e: MapMouseEvent) => {
+      if (isDrawingShape) {
+        setShapeDraftPoints((prev) => [...prev, [e.lngLat.lng, e.lngLat.lat]]);
+        setPopup(null);
+        return;
+      }
+
+      if (!placementMode) {
+        const queryOptions =
+          interactiveLayerIds.length > 0 ? { layers: interactiveLayerIds } : undefined;
+        const features = mapRef.current?.queryRenderedFeatures(e.point, queryOptions) ?? [];
+
+        if (features.length === 0) {
+          setPopup(null);
+          return;
+        }
+
+        const feature = features[0];
+        const properties = (feature.properties ?? {}) as Record<string, unknown>;
+        const layerId = feature.layer?.id ?? "";
+        const projectIdFromProps =
+          typeof properties.project_id === "string" ? properties.project_id : null;
+        const projectIdFromLayer = parseProjectIdFromLayerId(layerId);
+        const projectId = projectIdFromProps ?? projectIdFromLayer;
+
+        if (projectId) {
+          const target = projects.find((project) => project.id === projectId);
+          setSelectedProjectId(projectId);
+          setShowConflictPanel(Boolean(target?.analysisResult));
+        }
+
+        const name =
+          stringProp(properties.project_name) ||
+          (projectId
+            ? projects.find((project) => project.id === projectId)?.config.name ?? null
+            : null) ||
+          stringProp(properties.Site_Name) ||
+          stringProp(properties.LEASE_NUMB) ||
+          stringProp(properties.NAME) ||
+          stringProp(properties.name) ||
+          (isLegacyProjectLayerId(layerId)
+            ? selectedProject?.config.name ?? null
+            : null) ||
+          layerId ||
+          "Selected feature";
+
+        setPopup({ lng: e.lngLat.lng, lat: e.lngLat.lat, text: name, mode: "click" });
+        return;
+      }
+
+      setDraftLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      setModalMode("new");
+      setEditingProjectId(null);
+      setShowModal(true);
+      setPlacementMode(false);
+      setPopup(null);
+    },
+    [interactiveLayerIds, isDrawingShape, placementMode, projects, selectedProject?.config.name]
+  );
+
+  const onMapMouseMove = useCallback(
+    (e: MapMouseEvent) => {
+      if (placementMode || isDrawingShape || popup?.mode === "click") return;
+
+      if (activeProjectLayerIds.length === 0) {
+        setPopup((prev) => (prev?.mode === "hover" ? null : prev));
+        return;
+      }
+
+      const features =
+        mapRef.current?.queryRenderedFeatures(e.point, {
+          layers: activeProjectLayerIds,
+        }) ?? [];
+
+      if (features.length === 0) {
+        setPopup((prev) => (prev?.mode === "hover" ? null : prev));
+        return;
+      }
+
+      const properties = (features[0].properties ?? {}) as Record<string, unknown>;
+      const layerId = features[0].layer?.id ?? "";
+      const projectIdFromProps =
+        typeof properties.project_id === "string" ? properties.project_id : null;
+      const projectIdFromLayer = parseProjectIdFromLayerId(layerId);
+      const projectId = projectIdFromProps ?? projectIdFromLayer;
+
+      const projectName =
+        stringProp(properties.project_name) ||
+        stringProp(properties.name) ||
+        (projectId
+          ? projects.find((project) => project.id === projectId)?.config.name ?? null
+          : null) ||
+        (isLegacyProjectLayerId(layerId) ? selectedProject?.config.name ?? null : null) ||
+        "Project";
+
+      setPopup({
+        lng: e.lngLat.lng,
+        lat: e.lngLat.lat,
+        text: projectName,
+        mode: "hover",
+      });
+    },
+    [activeProjectLayerIds, isDrawingShape, placementMode, popup?.mode, projects, selectedProject?.config.name]
+  );
+
+  const clearHoverPopup = useCallback(() => {
+    setPopup((prev) => (prev?.mode === "hover" ? null : prev));
+  }, []);
+
+  const onMarkerDragEnd = useCallback((projectId: string, event: MarkerDragEvent) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+
+        const newLng = event.lngLat.lng;
+        const newLat = event.lngLat.lat;
+
+        if (project.config.shapeType === "drawn" && project.customPolygon) {
+          const deltaLng = newLng - project.lng;
+          const deltaLat = newLat - project.lat;
+
+          return {
+            ...project,
+            lng: newLng,
+            lat: newLat,
+            customPolygon: shiftPolygon(project.customPolygon, deltaLng, deltaLat),
+            analysisResult: null,
+          };
+        }
+
+        return {
+          ...project,
+          lng: newLng,
+          lat: newLat,
+          analysisResult: null,
+        };
+      })
+    );
+    setSelectedProjectId(projectId);
+    setShowConflictPanel(false);
+    setHoveredConflictLayer(null);
+  }, []);
+
+  const modalLocation =
+    modalMode === "new"
+      ? draftLocation
+      : editingProject
+        ? {
+            lat: editingProject.lat,
+            lng: editingProject.lng,
+          }
+        : null;
+
+  const modalInitialValues =
+    modalMode === "edit"
+      ? editingProject?.config ?? DEFAULT_PROJECT_CONFIG
+      : DEFAULT_PROJECT_CONFIG;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#0A1628]">
@@ -239,7 +760,6 @@ export default function MapDashboard() {
         mapStyle={mapStyle}
       />
 
-      {/* Loading overlay */}
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#0A1628]">
           <div className="text-center">
@@ -266,13 +786,12 @@ export default function MapDashboard() {
         }}
         style={{ width: "100%", height: "100%" }}
         mapStyle={MAP_STYLES[mapStyle]}
-        cursor={placementMode ? "crosshair" : "grab"}
+        cursor={placementMode || isDrawingShape ? "crosshair" : "grab"}
         onClick={onMapClick}
-        interactiveLayerIds={layers
-          .filter((l) => layerVisibility[l.id])
-          .map((l) => `${l.id}-layer`)}
+        onMouseMove={onMapMouseMove}
+        onMouseLeave={clearHoverPopup}
+        interactiveLayerIds={interactiveLayerIds}
       >
-        {/* Render all GeoJSON layers */}
         {layers.map((layer) => {
           if (!layerVisibility[layer.id]) return null;
           const isHighlighted = hoveredConflictLayer === layer.id;
@@ -320,45 +839,147 @@ export default function MapDashboard() {
           );
         })}
 
-        {/* Project circle */}
-        {circleGeoJSON && (
-          <Source id="project-circle" type="geojson" data={circleGeoJSON}>
+        {projects.map((project) => {
+          const geojson = createProjectAreaGeoJSON(project);
+          if (!geojson) return null;
+
+          const isSelected = selectedProjectId === project.id;
+          const isProjectAnalyzing = analyzingProjectId === project.id;
+
+          return (
+            <Source
+              key={`project-source-${project.id}`}
+              id={`project-${project.id}-area`}
+              type="geojson"
+              data={geojson}
+            >
+              <Layer
+                id={`project-${project.id}-fill`}
+                type="fill"
+                paint={{
+                  "fill-color": isSelected ? "#3B82F6" : "#2563EB",
+                  "fill-opacity": isProjectAnalyzing
+                    ? 0.35
+                    : isSelected
+                      ? 0.2
+                      : 0.1,
+                }}
+              />
+              <Layer
+                id={`project-${project.id}-border`}
+                type="line"
+                paint={{
+                  "line-color": isSelected ? "#14B8A6" : "#3B82F6",
+                  "line-width": isSelected ? 2.5 : 1.5,
+                  "line-opacity": 0.9,
+                }}
+              />
+            </Source>
+          );
+        })}
+
+        {isDrawingShape && drawingPolygonGeoJSON && (
+          <Source id="shape-draw-polygon" type="geojson" data={drawingPolygonGeoJSON}>
             <Layer
-              id="project-circle-fill"
+              id="shape-draw-polygon-fill"
               type="fill"
               paint={{
-                "fill-color": "#3B82F6",
-                "fill-opacity": analyzing ? 0.35 : 0.15,
+                "fill-color": "#14B8A6",
+                "fill-opacity": 0.2,
               }}
             />
             <Layer
-              id="project-circle-border"
+              id="shape-draw-polygon-border"
               type="line"
               paint={{
-                "line-color": analyzing ? "#14B8A6" : "#3B82F6",
+                "line-color": "#14B8A6",
                 "line-width": 2,
+                "line-opacity": 0.9,
               }}
             />
           </Source>
         )}
 
-        {/* Pin marker (draggable for editing) */}
-        {pinLocation && (
-          <Marker
-            longitude={pinLocation.lng}
-            latitude={pinLocation.lat}
-            draggable
-            onDragEnd={onMarkerDragEnd}
-          >
-            <button
-              type="button"
-              title="Drag to reposition project"
-              className="group relative h-5 w-5 rounded-full border-2 border-white bg-[#14B8A6] shadow-[0_0_24px_rgba(20,184,166,0.6)]"
-            >
-              <span className="absolute -inset-2 rounded-full border border-[#14B8A6]/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-            </button>
-          </Marker>
+        {isDrawingShape && drawingLineGeoJSON && (
+          <Source id="shape-draw-line" type="geojson" data={drawingLineGeoJSON}>
+            <Layer
+              id="shape-draw-line-layer"
+              type="line"
+              paint={{
+                "line-color": "#22D3EE",
+                "line-width": 2,
+                "line-dasharray": [1.5, 1.5],
+              }}
+            />
+          </Source>
         )}
+
+        {projects.map((project) => {
+          const isSelected = selectedProjectId === project.id;
+          const hasAnalysis = Boolean(project.analysisResult);
+
+          return (
+            <Marker
+              key={`project-marker-${project.id}`}
+              longitude={project.lng}
+              latitude={project.lat}
+              draggable
+              onDragStart={() => setSelectedProjectId(project.id)}
+              onDragEnd={(event) => onMarkerDragEnd(project.id, event)}
+            >
+              <button
+                type="button"
+                title={`${project.config.name} (drag to reposition)`}
+                className={`group relative h-5 w-5 rounded-full border-2 border-white shadow-[0_0_24px_rgba(20,184,166,0.6)] ${
+                  isSelected ? "bg-[#14B8A6]" : "bg-[#3B82F6]"
+                }`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedProjectId(project.id);
+                  setShowConflictPanel(hasAnalysis);
+                  setPopup({
+                    lng: project.lng,
+                    lat: project.lat,
+                    text: project.config.name,
+                    mode: "click",
+                  });
+                }}
+                onMouseEnter={(event) => {
+                  event.stopPropagation();
+                  if (popup?.mode === "click") return;
+                  setPopup({
+                    lng: project.lng,
+                    lat: project.lat,
+                    text: project.config.name,
+                    mode: "hover",
+                  });
+                }}
+                onMouseLeave={clearHoverPopup}
+              >
+                <span className="absolute -inset-2 rounded-full border border-[#14B8A6]/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+              </button>
+            </Marker>
+          );
+        })}
+
+        {isDrawingShape &&
+          shapeDraftPoints.map((point, idx) => (
+            <Marker
+              key={`shape-point-${idx}`}
+              longitude={point[0]}
+              latitude={point[1]}
+            >
+              <button
+                type="button"
+                title="Delete point"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removeShapePoint(idx);
+                }}
+                className="h-3 w-3 rounded-full border border-white bg-[#22D3EE] shadow-[0_0_10px_rgba(34,211,238,0.6)] transition-transform hover:scale-110"
+              />
+            </Marker>
+          ))}
 
         {popup && (
           <Popup
@@ -368,44 +989,152 @@ export default function MapDashboard() {
             onClose={() => setPopup(null)}
             className="map-popup"
           >
-            <p className="text-sm font-medium text-slate-800">{popup.text}</p>
+            <p className="text-sm font-medium text-slate-100">{popup.text}</p>
           </Popup>
         )}
       </Map>
 
-      {/* Layer Panel */}
       <LayerPanel
         layers={layers}
         visibility={layerVisibility}
         onToggle={toggleLayer}
       />
 
-      {/* Project Setup Modal */}
-      {showModal && pinLocation && (
+      <div className="absolute bottom-6 left-6 z-20 w-[340px] rounded-xl border border-white/10 bg-[#0A1628]/75 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">Projects</h3>
+          <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">
+            {projects.length}
+          </span>
+        </div>
+
+        {projects.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            No projects yet. Click &quot;New Project&quot; and place one on the map.
+          </p>
+        ) : (
+          <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+            {projects.map((project) => {
+              const isSelected = selectedProjectId === project.id;
+              const isProjectAnalyzing = analyzingProjectId === project.id;
+              const riskLabel = project.analysisResult?.risk_level ?? "not analyzed";
+
+              return (
+                <div
+                  key={project.id}
+                  className={`rounded-lg border p-3 ${
+                    isSelected
+                      ? "border-[#14B8A6]/50 bg-[#14B8A6]/10"
+                      : "border-white/10 bg-white/[0.03]"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => {
+                      setSelectedProjectId(project.id);
+                      setShowConflictPanel(Boolean(project.analysisResult));
+                      mapRef.current?.flyTo({
+                        center: [project.lng, project.lat],
+                        zoom: 7,
+                        duration: 600,
+                      });
+                    }}
+                  >
+                    <p className="truncate text-sm font-semibold text-white">
+                      {project.config.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">
+                      {project.config.projectType.replace("_", " ")} · {project.config.radiusKm}km
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Shape: {project.config.shapeType}
+                    </p>
+                    <p className="mt-0.5 text-[11px] uppercase tracking-wide text-slate-500">
+                      {riskLabel}
+                    </p>
+                  </button>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => reanalyzeProject(project.id)}
+                      disabled={isProjectAnalyzing}
+                      className="rounded-md border border-[#14B8A6]/50 bg-[#14B8A6]/10 px-2 py-1 text-[11px] font-semibold text-[#14B8A6] transition-colors hover:bg-[#14B8A6]/20 disabled:opacity-60"
+                    >
+                      {isProjectAnalyzing ? "Analyzing..." : "Analyze"}
+                    </button>
+                    <button
+                      onClick={() => openEditProject(project.id)}
+                      className="rounded-md border border-white/20 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => removeProject(project.id)}
+                      className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 transition-colors hover:bg-red-500/20"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <select
+                      value={project.config.shapeType}
+                      onChange={(event) =>
+                        updateProjectShapeType(
+                          project.id,
+                          event.target.value as ProjectShapeType
+                        )
+                      }
+                      className="flex-1 rounded-md border border-white/20 bg-black/30 px-2 py-1 text-[11px] text-slate-200 outline-none"
+                    >
+                      <option value="circle">Circle</option>
+                      <option value="square">Square</option>
+                      <option value="hexagon">Hexagon</option>
+                      <option value="drawn">Drawn Polygon</option>
+                    </select>
+                    <button
+                      onClick={() => startDrawingShapeForProject(project.id)}
+                      disabled={project.config.shapeType !== "drawn"}
+                      className="rounded-md border border-cyan-400/40 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-300 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Draw
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showModal && modalLocation && (
         <ProjectModal
-          lat={pinLocation.lat}
-          lng={pinLocation.lng}
+          key={`${modalMode}-${editingProjectId ?? "new"}-${modalLocation.lat}-${modalLocation.lng}`}
+          lat={modalLocation.lat}
+          lng={modalLocation.lng}
           onAnalyze={runAnalysis}
-          initialValues={projectConfig}
+          initialValues={modalInitialValues}
           title={modalMode === "edit" ? "Edit Project" : "Project Configuration"}
           actionLabel={modalMode === "edit" ? "Update Analysis" : "Analyze Conflicts"}
           onClose={() => {
             setShowModal(false);
+            setModalMode("new");
+            setEditingProjectId(null);
             if (modalMode === "new") {
-              setPinLocation(null);
+              setDraftLocation(null);
             }
           }}
         />
       )}
 
-      {/* Conflict Panel */}
-      {showConflictPanel && analysisResult && (
+      {showConflictPanel && selectedAnalysisResult && selectedProject && (
         <ConflictPanel
-          result={analysisResult}
+          result={selectedAnalysisResult}
+          projectName={selectedProject.config.name}
           analyzing={analyzing}
           onClose={() => {
             setShowConflictPanel(false);
-            setAnalysisResult(null);
             setHoveredConflictLayer(null);
           }}
           onApplySuggestion={applySuggestion}
@@ -413,37 +1142,41 @@ export default function MapDashboard() {
         />
       )}
 
-      {/* Placement mode toast */}
-      {placementMode && (
+      {placementMode && !isDrawingShape && (
         <div className="absolute bottom-10 left-1/2 z-30 -translate-x-1/2 animate-fade-in-up rounded-full border border-white/10 bg-black/80 px-6 py-3 text-sm text-slate-300 backdrop-blur-md">
-          Click anywhere on the map to propose a project
+          Click anywhere on the map to place a new project
         </div>
       )}
 
-      {/* Project quick actions */}
-      {pinLocation && !showModal && (
-        <div className="absolute right-6 bottom-6 z-30 rounded-xl border border-white/10 bg-black/70 p-2 backdrop-blur-md">
-          <p className="mb-2 px-1 text-[11px] text-slate-400">
-            Drag marker to move project
+      {isDrawingShape && (
+        <div className="absolute right-6 top-[80px] z-30 rounded-xl border border-cyan-400/30 bg-black/75 p-3 backdrop-blur-md">
+          <p className="mb-2 text-xs text-cyan-200">
+            Draw mode: click map to add points, click a node to delete it
           </p>
           <div className="flex items-center gap-2">
             <button
-              onClick={openEditProject}
-              className="rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.08]"
+              onClick={undoShapePoint}
+              disabled={shapeDraftPoints.length === 0}
+              className="rounded-md border border-white/20 bg-white/[0.04] px-2 py-1 text-[11px] text-slate-200 disabled:opacity-50"
             >
-              Edit Project
+              Undo
             </button>
             <button
-              onClick={removeProject}
-              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20"
+              onClick={cancelDrawingShape}
+              className="rounded-md border border-white/20 bg-white/[0.04] px-2 py-1 text-[11px] text-slate-200"
             >
-              Remove
+              Cancel
+            </button>
+            <button
+              onClick={finishDrawingShape}
+              className="rounded-md border border-cyan-400/50 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-200"
+            >
+              Finish Shape
             </button>
           </div>
         </div>
       )}
 
-      {/* Analyzing overlay */}
       {analyzing && !showModal && (
         <div className="absolute bottom-10 left-1/2 z-30 -translate-x-1/2 flex items-center gap-3 rounded-full border border-[#14B8A6]/30 bg-black/80 px-6 py-3 text-sm text-[#14B8A6] backdrop-blur-md">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#14B8A6] border-t-transparent" />
@@ -454,23 +1187,174 @@ export default function MapDashboard() {
   );
 }
 
-/**
- * Generate a GeoJSON polygon approximating a circle.
- */
+function stringProp(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function parseProjectIdFromLayerId(layerId: string): string | null {
+  if (!layerId.startsWith("project-")) return null;
+  if (layerId === "project-circle-fill" || layerId === "project-circle-border") return null;
+
+  if (layerId.endsWith("-fill")) {
+    return layerId.slice("project-".length, -"-fill".length) || null;
+  }
+  if (layerId.endsWith("-border")) {
+    return layerId.slice("project-".length, -"-border".length) || null;
+  }
+  return null;
+}
+
+function isLegacyProjectLayerId(layerId: string): boolean {
+  return layerId === "project-circle-fill" || layerId === "project-circle-border";
+}
+
+function createProjectId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `project-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function getProjectAnalysisInput(project: ProjectRecord): {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+} {
+  if (project.config.shapeType === "drawn" && project.customPolygon && project.customPolygon.length >= 4) {
+    const centroid = polygonCentroid(project.customPolygon);
+    const radiusKm = Math.max(1, estimateRadiusFromPolygonKm(project.customPolygon, centroid));
+    return {
+      lat: centroid[1],
+      lng: centroid[0],
+      radiusKm: Number(radiusKm.toFixed(1)),
+    };
+  }
+
+  return {
+    lat: project.lat,
+    lng: project.lng,
+    radiusKm: project.config.radiusKm,
+  };
+}
+
+function createProjectAreaGeoJSON(project: ProjectRecord): GeoJSON.FeatureCollection | null {
+  const properties: GeoJSON.GeoJsonProperties = {
+    project_id: project.id,
+    project_name: project.config.name,
+    name: project.config.name,
+  };
+
+  const radiusKm = project.analysisResult?.project_circle.radius_km ?? project.config.radiusKm;
+
+  if (project.config.shapeType === "drawn") {
+    if (project.customPolygon && project.customPolygon.length >= 4) {
+      return {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties,
+            geometry: {
+              type: "Polygon",
+              coordinates: [closeRing(project.customPolygon)],
+            },
+          },
+        ],
+      };
+    }
+    return createCircleGeoJSON(project.lng, project.lat, radiusKm, properties);
+  }
+
+  if (project.config.shapeType === "square") {
+    return createRegularPolygonGeoJSON(project.lng, project.lat, radiusKm, 4, properties, Math.PI / 4);
+  }
+
+  if (project.config.shapeType === "hexagon") {
+    return createRegularPolygonGeoJSON(project.lng, project.lat, radiusKm, 6, properties);
+  }
+
+  return createCircleGeoJSON(project.lng, project.lat, radiusKm, properties);
+}
+
+function shiftPolygon(
+  polygon: [number, number][],
+  deltaLng: number,
+  deltaLat: number
+): [number, number][] {
+  return polygon.map(([lng, lat]) => [lng + deltaLng, lat + deltaLat]);
+}
+
+function closeRing(points: [number, number][]): [number, number][] {
+  if (points.length === 0) return points;
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) return points;
+  return [...points, first];
+}
+
+function polygonCentroid(points: [number, number][]): [number, number] {
+  const ring = closeRing(points);
+  const withoutClosure = ring.slice(0, -1);
+  const count = withoutClosure.length;
+  const lng = withoutClosure.reduce((sum, point) => sum + point[0], 0) / count;
+  const lat = withoutClosure.reduce((sum, point) => sum + point[1], 0) / count;
+  return [lng, lat];
+}
+
+function estimateRadiusFromPolygonKm(
+  points: [number, number][],
+  center: [number, number]
+): number {
+  const ring = closeRing(points).slice(0, -1);
+  if (ring.length === 0) return 1;
+
+  let maxDistance = 0;
+  for (const [lng, lat] of ring) {
+    const distance = haversineKm(center[0], center[1], lng, lat);
+    if (distance > maxDistance) maxDistance = distance;
+  }
+  return maxDistance;
+}
+
+function haversineKm(lng1: number, lat1: number, lng2: number, lat2: number): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return 6371 * c;
+}
+
 function createCircleGeoJSON(
   lng: number,
   lat: number,
   radiusKm: number,
+  properties: GeoJSON.GeoJsonProperties = {},
   steps = 64
 ): GeoJSON.FeatureCollection {
-  const coords: [number, number][] = [];
-  const distRadians = radiusKm / 6371; // Earth radius in km
+  return createRegularPolygonGeoJSON(lng, lat, radiusKm, steps, properties);
+}
 
-  for (let i = 0; i <= steps; i++) {
-    const angle = (i / steps) * 2 * Math.PI;
+function createRegularPolygonGeoJSON(
+  lng: number,
+  lat: number,
+  radiusKm: number,
+  sides: number,
+  properties: GeoJSON.GeoJsonProperties = {},
+  rotationRadians = 0
+): GeoJSON.FeatureCollection {
+  const coords: [number, number][] = [];
+  const distRadians = radiusKm / 6371;
+
+  for (let i = 0; i <= sides; i++) {
+    const angle = (i / sides) * 2 * Math.PI + rotationRadians;
     const dLat = distRadians * Math.cos(angle);
-    const dLng =
-      distRadians * Math.sin(angle) / Math.cos((lat * Math.PI) / 180);
+    const dLng = distRadians * Math.sin(angle) / Math.cos((lat * Math.PI) / 180);
     coords.push([lng + (dLng * 180) / Math.PI, lat + (dLat * 180) / Math.PI]);
   }
 
@@ -479,7 +1363,7 @@ function createCircleGeoJSON(
     features: [
       {
         type: "Feature",
-        properties: {},
+        properties,
         geometry: { type: "Polygon", coordinates: [coords] },
       },
     ],

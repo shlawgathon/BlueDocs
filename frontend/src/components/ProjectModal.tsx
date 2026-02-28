@@ -6,12 +6,18 @@ interface ProjectFormValues {
   projectType: string;
   radiusKm: number;
   name: string;
+  shapeType: "circle" | "square" | "hexagon" | "drawn";
 }
 
 interface ProjectModalProps {
   lat: number;
   lng: number;
-  onAnalyze: (projectType: string, radiusKm: number, name: string) => void;
+  onAnalyze: (
+    projectType: string,
+    radiusKm: number,
+    name: string,
+    shapeType: "circle" | "square" | "hexagon" | "drawn"
+  ) => void;
   onClose: () => void;
   title?: string;
   actionLabel?: string;
@@ -24,6 +30,13 @@ const PROJECT_TYPES = [
   { value: "oae", label: "OAE Site" },
   { value: "cable", label: "Subsea Cable" },
 ];
+
+const SHAPE_TYPES = [
+  { value: "circle", label: "Circle" },
+  { value: "square", label: "Square" },
+  { value: "hexagon", label: "Hexagon" },
+  { value: "drawn", label: "Drawn Polygon" },
+] as const;
 
 function formatLat(lat: number): string {
   return `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? "N" : "S"}`;
@@ -47,6 +60,9 @@ export function ProjectModal({
   );
   const [radiusKm, setRadiusKm] = useState(initialValues?.radiusKm ?? 25);
   const [name, setName] = useState(initialValues?.name ?? "");
+  const [shapeType, setShapeType] = useState<"circle" | "square" | "hexagon" | "drawn">(
+    initialValues?.shapeType ?? "circle"
+  );
 
   return (
     <>
@@ -111,7 +127,7 @@ export function ProjectModal({
         </div>
 
         {/* Name */}
-        <div className="mb-6">
+        <div className="mb-4">
           <label className="mb-2 block text-xs font-medium text-slate-400">
             Project Name
           </label>
@@ -124,9 +140,36 @@ export function ProjectModal({
           />
         </div>
 
+        {/* Shape */}
+        <div className="mb-6">
+          <label className="mb-2 block text-xs font-medium text-slate-400">
+            Shape
+          </label>
+          <select
+            value={shapeType}
+            onChange={(e) =>
+              setShapeType(
+                e.target.value as "circle" | "square" | "hexagon" | "drawn"
+              )
+            }
+            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#14B8A6]"
+          >
+            {SHAPE_TYPES.map((shape) => (
+              <option key={shape.value} value={shape.value}>
+                {shape.label}
+              </option>
+            ))}
+          </select>
+          {shapeType === "drawn" && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Save first, then use the Draw button in the Projects panel.
+            </p>
+          )}
+        </div>
+
         {/* Analyze button */}
         <button
-          onClick={() => onAnalyze(projectType, radiusKm, name)}
+          onClick={() => onAnalyze(projectType, radiusKm, name, shapeType)}
           className="w-full rounded-lg bg-[#14B8A6] py-3 text-sm font-semibold text-[#0A1628] shadow-[0_0_15px_rgba(20,184,166,0.3)] transition-all hover:shadow-[0_0_25px_rgba(20,184,166,0.5)]"
         >
           {actionLabel}
