@@ -8,7 +8,7 @@ import type {
   ConflictCheckResponse,
 } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function fetchLayers(): Promise<LayersResponse> {
   const res = await fetch(`${API_URL}/api/layers`);

@@ -16,7 +16,22 @@ import type {
   Layer as LayerData,
   ConflictCheckResponse,
 } from "@/lib/types";
-import { fetchLayers, checkConflicts } from "@/lib/api";
+import { API_URL, fetchLayers, checkConflicts } from "@/lib/api";
+import type { StoredProjectRecord } from "@/lib/convexAccount";
+import {
+  clearStoredAccountToken,
+  fetchAccountProjects,
+  getCurrentAccount,
+  getStoredAccountToken,
+  replaceAccountProjects,
+  sendAnalysisNotification,
+  setStoredAccountToken,
+  signInAccount,
+  signOutAccount,
+  signUpAccount,
+} from "@/lib/convexAccount";
+import { getLayerSourceMeta, getLayerSourceMetaById } from "@/lib/layerSources";
+import { AuthModal } from "@/components/AuthModal";
 import { Header } from "@/components/Header";
 import { LayerPanel } from "@/components/LayerPanel";
 import { ProjectModal } from "@/components/ProjectModal";
@@ -43,11 +58,15 @@ interface ProjectRecord {
   customPolygon?: [number, number][];
 }
 
+type AuthMode = "login" | "signup";
+
 interface PopupState {
   lng: number;
   lat: number;
   text: string;
   mode: "hover" | "click";
+  sourceUrl?: string;
+  sourceName?: string;
 }
 
 const MAP_STYLES: Record<MapStyle, string> = {
@@ -83,7 +102,15 @@ export default function MapDashboard() {
   const [analyzingProjectId, setAnalyzingProjectId] = useState<string | null>(null);
   const [showConflictPanel, setShowConflictPanel] = useState(false);
   const [hoveredConflictLayer, setHoveredConflictLayer] = useState<string | null>(null);
-  const [mapStyle, setMapStyle] = useState<MapStyle>("dark");
+  const [mapStyle, setMapStyle] = useState<MapStyle>("satellite");
+  const [lastLayersFetchAt, setLastLayersFetchAt] = useState<Date | null>(null);
+  const [lastConflictFetchAt, setLastConflictFetchAt] = useState<Date | null>(null);
+  const [apiLinksOpen, setApiLinksOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [accountToken, setAccountToken] = useState<string | null>(null);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [accountProjectsReady, setAccountProjectsReady] = useState(false);
 
   // Draw mode
   const [shapeDrawProjectId, setShapeDrawProjectId] = useState<string | null>(null);
@@ -106,6 +133,38 @@ export default function MapDashboard() {
   );
 
   const selectedAnalysisResult = selectedProject?.analysisResult ?? null;
+  const layerMap = useMemo(
+    () => new globalThis.Map<string, LayerData>(layers.map((layer) => [layer.id, layer])),
+    [layers]
+  );
+  const lastApiFetchAt = useMemo(() => {
+    const layerTime = lastLayersFetchAt?.getTime() ?? 0;
+    const conflictTime = lastConflictFetchAt?.getTime() ?? 0;
+    const latest = Math.max(layerTime, conflictTime);
+    return latest > 0 ? new Date(latest) : null;
+  }, [lastConflictFetchAt, lastLayersFetchAt]);
+
+  const apiLinkGroups = useMemo(() => {
+    const appLinks = [
+      { label: "GET /api/layers", url: `${API_URL}/api/layers` },
+      { label: "POST /api/conflict-check", url: `${API_URL}/api/conflict-check` },
+      { label: "API docs", url: `${API_URL}/docs` },
+    ];
+
+    const datasetMap = new globalThis.Map<string, string>();
+    layers.forEach((layer) => {
+      const source = getLayerSourceMeta(layer);
+      if (source) {
+        datasetMap.set(source.source_url, source.source_name);
+      }
+    });
+    const datasetLinks = Array.from(datasetMap.entries()).map(([url, label]) => ({
+      label,
+      url,
+    }));
+
+    return { appLinks, datasetLinks };
+  }, [layers]);
 
   const activeProjectLayerIds = useMemo(
     () => projects.map((project) => `project-${project.id}-fill`),
@@ -161,6 +220,7 @@ export default function MapDashboard() {
     fetchLayers()
       .then((data) => {
         setLayers(data.layers);
+        setLastLayersFetchAt(new Date());
         const visibility: Record<string, boolean> = {};
         data.layers.forEach((layer) => {
           visibility[layer.id] = layer.visible;
@@ -171,11 +231,150 @@ export default function MapDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateAccount = async () => {
+      const token = getStoredAccountToken();
+      if (!token) {
+        if (!cancelled) {
+          setAccountToken(null);
+          setAccountEmail(null);
+          setAccountProjectsReady(false);
+          setAuthChecking(false);
+        }
+        return;
+      }
+
+      try {
+        const user = await getCurrentAccount(token);
+        if (!user) {
+          clearStoredAccountToken();
+          if (!cancelled) {
+            setAccountToken(null);
+            setAccountEmail(null);
+            setAccountProjectsReady(false);
+            setProjects([]);
+            setSelectedProjectId(null);
+          }
+          return;
+        }
+
+        const accountProjects = await fetchAccountProjects(token);
+        if (cancelled) return;
+
+        setAccountToken(token);
+        setAccountEmail(user.email);
+        setProjects(accountProjects.map(fromStoredProject));
+        setSelectedProjectId(accountProjects[0]?.id ?? null);
+        setShowConflictPanel(false);
+        setHoveredConflictLayer(null);
+        setAccountProjectsReady(true);
+      } catch (e) {
+        clearStoredAccountToken();
+        if (!cancelled) {
+          setAccountToken(null);
+          setAccountEmail(null);
+          setAccountProjectsReady(false);
+          setProjects([]);
+          setSelectedProjectId(null);
+          setError(e instanceof Error ? e.message : "Failed to initialize account.");
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+      }
+    };
+
+    void hydrateAccount();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!accountToken || !accountProjectsReady) return;
+
+    const timer = window.setTimeout(() => {
+      replaceAccountProjects(
+        accountToken,
+        projects.map((project) => toStoredProject(project))
+      ).catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to sync account projects.");
+      });
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [accountProjectsReady, accountToken, projects]);
+
+  const handleAuthSubmit = useCallback(
+    async (mode: AuthMode, email: string, password: string) => {
+      const authResponse =
+        mode === "signup"
+          ? await signUpAccount(email, password)
+          : await signInAccount(email, password);
+
+      const accountProjects = await fetchAccountProjects(authResponse.token);
+      setStoredAccountToken(authResponse.token);
+      setAccountToken(authResponse.token);
+      setAccountEmail(authResponse.user.email);
+      setProjects(accountProjects.map(fromStoredProject));
+      setSelectedProjectId(accountProjects[0]?.id ?? null);
+      setShowConflictPanel(false);
+      setHoveredConflictLayer(null);
+      setPopup(null);
+      setPlacementMode(false);
+      setShapeDrawProjectId(null);
+      setShapeDraftPoints([]);
+      setAccountProjectsReady(true);
+      setError(null);
+      setAuthModalOpen(false);
+    },
+    []
+  );
+
+  const handleLogout = useCallback(async () => {
+    const token = accountToken;
+    if (token) {
+      try {
+        await signOutAccount(token);
+      } catch {
+        // Ignore logout failures and clear local session anyway.
+      }
+    }
+
+    clearStoredAccountToken();
+    setAccountToken(null);
+    setAccountEmail(null);
+    setAccountProjectsReady(false);
+    setProjects([]);
+    setSelectedProjectId(null);
+    setShowConflictPanel(false);
+    setHoveredConflictLayer(null);
+    setPopup(null);
+    setPlacementMode(false);
+    setShowModal(false);
+    setModalMode("new");
+    setDraftLocation(null);
+    setEditingProjectId(null);
+    setShapeDrawProjectId(null);
+    setShapeDraftPoints([]);
+  }, [accountToken]);
+
   const toggleLayer = useCallback((layerId: string) => {
     setLayerVisibility((prev) => ({ ...prev, [layerId]: !prev[layerId] }));
   }, []);
 
   const startPlacement = useCallback(() => {
+    if (!accountToken) {
+      setAuthModalOpen(true);
+      setError("Sign in to create and save projects.");
+      return;
+    }
+
     setModalMode("new");
     setPlacementMode(true);
     setShowModal(false);
@@ -186,7 +385,7 @@ export default function MapDashboard() {
     setPopup(null);
     setShapeDrawProjectId(null);
     setShapeDraftPoints([]);
-  }, []);
+  }, [accountToken]);
 
   const startDrawingShapeForProject = useCallback(
     (projectId: string) => {
@@ -435,6 +634,7 @@ export default function MapDashboard() {
           radius_km: analysisInput.radiusKm,
           name: preparedProject.config.name || undefined,
         });
+        setLastConflictFetchAt(new Date());
 
         setProjects((prev) =>
           prev.map((project) =>
@@ -453,6 +653,16 @@ export default function MapDashboard() {
           )
         );
         setShowConflictPanel(true);
+
+        if (accountEmail) {
+          void sendAnalysisNotification(
+            accountEmail,
+            result,
+            preparedProject!.config.name,
+            analysisInput.lat,
+            analysisInput.lng
+          );
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Analysis failed");
       } finally {
@@ -462,7 +672,7 @@ export default function MapDashboard() {
         setEditingProjectId(null);
       }
     },
-    [draftLocation, editingProjectId, modalMode, projects, selectedProjectId, startDrawingShapeForProject]
+    [accountEmail, draftLocation, editingProjectId, modalMode, projects, selectedProjectId, startDrawingShapeForProject]
   );
 
   const reanalyzeProject = useCallback(
@@ -491,6 +701,7 @@ export default function MapDashboard() {
           radius_km: analysisInput.radiusKm,
           name: project.config.name || undefined,
         });
+        setLastConflictFetchAt(new Date());
 
         setProjects((prev) =>
           prev.map((item) =>
@@ -509,13 +720,23 @@ export default function MapDashboard() {
           )
         );
         setShowConflictPanel(true);
+
+        if (accountEmail) {
+          void sendAnalysisNotification(
+            accountEmail,
+            result,
+            project.config.name,
+            analysisInput.lat,
+            analysisInput.lng
+          );
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Analysis failed");
       } finally {
         setAnalyzingProjectId(null);
       }
     },
-    [projects, startDrawingShapeForProject]
+    [accountEmail, projects, startDrawingShapeForProject]
   );
 
   const applySuggestion = useCallback(async () => {
@@ -569,6 +790,7 @@ export default function MapDashboard() {
         radius_km: analysisInput.radiusKm,
         name: movedProject.config.name || undefined,
       });
+      setLastConflictFetchAt(new Date());
 
       setProjects((prev) =>
         prev.map((project) =>
@@ -594,6 +816,10 @@ export default function MapDashboard() {
 
   const onMapClick = useCallback(
     (e: MapMouseEvent) => {
+      if (apiLinksOpen) {
+        setApiLinksOpen(false);
+      }
+
       if (isDrawingShape) {
         setShapeDraftPoints((prev) => [...prev, [e.lngLat.lng, e.lngLat.lat]]);
         setPopup(null);
@@ -601,9 +827,10 @@ export default function MapDashboard() {
       }
 
       if (!placementMode) {
+        const safeLayerIds = getExistingLayerIds(mapRef.current, interactiveLayerIds);
         const queryOptions =
-          interactiveLayerIds.length > 0 ? { layers: interactiveLayerIds } : undefined;
-        const features = mapRef.current?.queryRenderedFeatures(e.point, queryOptions) ?? [];
+          safeLayerIds.length > 0 ? { layers: safeLayerIds } : undefined;
+        const features = safeQueryRenderedFeatures(mapRef.current, e.point, queryOptions);
 
         if (features.length === 0) {
           setPopup(null);
@@ -639,7 +866,34 @@ export default function MapDashboard() {
           layerId ||
           "Selected feature";
 
-        setPopup({ lng: e.lngLat.lng, lat: e.lngLat.lat, text: name, mode: "click" });
+        const baseLayerId = resolveBaseLayerId(layerId);
+        const matchedLayer = baseLayerId ? layerMap.get(baseLayerId) : undefined;
+        const fallbackSource = baseLayerId
+          ? getLayerSourceMetaById(baseLayerId)
+          : null;
+        const featureUrl =
+          firstHttpUrl(properties.url) ??
+          firstHttpUrl(properties.URL) ??
+          firstHttpUrl(properties.source_url);
+        const sourceUrl =
+          featureUrl ??
+          matchedLayer?.source_url ??
+          fallbackSource?.source_url ??
+          undefined;
+        const sourceName =
+          matchedLayer?.source_name ??
+          matchedLayer?.name ??
+          fallbackSource?.source_name ??
+          "Dataset source";
+
+        setPopup({
+          lng: e.lngLat.lng,
+          lat: e.lngLat.lat,
+          text: name,
+          mode: "click",
+          sourceUrl,
+          sourceName: sourceUrl ? sourceName : undefined,
+        });
         return;
       }
 
@@ -650,7 +904,15 @@ export default function MapDashboard() {
       setPlacementMode(false);
       setPopup(null);
     },
-    [interactiveLayerIds, isDrawingShape, placementMode, projects, selectedProject?.config.name]
+    [
+      apiLinksOpen,
+      interactiveLayerIds,
+      isDrawingShape,
+      layerMap,
+      placementMode,
+      projects,
+      selectedProject?.config.name,
+    ]
   );
 
   const onMapMouseMove = useCallback(
@@ -662,10 +924,12 @@ export default function MapDashboard() {
         return;
       }
 
-      const features =
-        mapRef.current?.queryRenderedFeatures(e.point, {
-          layers: activeProjectLayerIds,
-        }) ?? [];
+      const safeLayerIds = getExistingLayerIds(mapRef.current, activeProjectLayerIds);
+      const features = safeQueryRenderedFeatures(
+        mapRef.current,
+        e.point,
+        safeLayerIds.length > 0 ? { layers: safeLayerIds } : undefined
+      );
 
       if (features.length === 0) {
         setPopup((prev) => (prev?.mode === "hover" ? null : prev));
@@ -752,12 +1016,31 @@ export default function MapDashboard() {
       : DEFAULT_PROJECT_CONFIG;
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[#0A1628]">
+    <div className="relative h-[100dvh] w-screen overflow-hidden bg-[#0A1628]">
       <Header
         onNewProject={startPlacement}
         onMapStyleChange={setMapStyle}
+        onOpenAccount={() => setAuthModalOpen(true)}
+        onLogout={handleLogout}
+        onSimulateApiChange={() => {
+          if (!accountEmail) return;
+          const project = selectedProject ?? projects[0];
+          const name = project?.config.name ?? "Sample Project";
+          const lat = project?.lat ?? 42.2;
+          const lng = project?.lng ?? -70.5;
+          const result = project?.analysisResult ?? {
+            risk_score: 78,
+            risk_level: "high",
+            conflicts: [{ layer_id: "demo", layer_name: "Demo", type: "overlap", severity: "warning", detail: "Simulated" }],
+            recommendation: { action: "none", reasoning: "Simulated" },
+            project_circle: { center: [lat, lng], radius_km: 25 },
+          };
+          void sendAnalysisNotification(accountEmail, result, name, lat, lng);
+        }}
         placementMode={placementMode}
         mapStyle={mapStyle}
+        accountEmail={accountEmail}
+        authChecking={authChecking}
       />
 
       {loading && (
@@ -775,6 +1058,83 @@ export default function MapDashboard() {
           <button onClick={() => setError(null)} className="ml-3 text-red-300 hover:text-white">&times;</button>
         </div>
       )}
+
+      <div className="absolute top-[70px] right-3 z-40 flex items-start gap-2 sm:right-6">
+        <div className="group relative">
+          <button
+            type="button"
+            className="rounded-lg border border-white/10 bg-[#0A1628]/80 px-3 py-1.5 text-[11px] font-semibold text-slate-200 backdrop-blur-md"
+          >
+            API Status
+          </button>
+          <div className="pointer-events-none absolute top-full right-0 mt-2 w-72 rounded-lg border border-white/10 bg-[#0A1628]/95 p-3 text-[11px] text-slate-300 opacity-0 shadow-[0_12px_28px_rgba(0,0,0,0.45)] transition-opacity duration-150 group-hover:opacity-100">
+            <p className="font-semibold text-slate-100">
+              Last fetched: {formatDateTime(lastApiFetchAt)}
+            </p>
+            <p className="mt-1">Layers API: {formatDateTime(lastLayersFetchAt)}</p>
+            <p>Conflict API: {formatDateTime(lastConflictFetchAt)}</p>
+            <p className="mt-2 text-slate-400">
+              Hover this badge anytime to verify when data was last requested.
+            </p>
+          </div>
+        </div>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setApiLinksOpen((prev) => !prev);
+            }}
+            className="rounded-lg border border-white/10 bg-[#0A1628]/80 px-3 py-1.5 text-[11px] font-semibold text-cyan-300 backdrop-blur-md transition-colors hover:text-cyan-200"
+          >
+            API Links
+          </button>
+          {apiLinksOpen && (
+            <div
+              className="absolute top-full right-0 mt-2 w-80 rounded-lg border border-white/10 bg-[#0A1628]/95 p-3 text-[11px] shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="mb-2 font-semibold text-slate-100">BlueDocs API</p>
+              <div className="space-y-1.5">
+                {apiLinkGroups.appLinks.map((link) => (
+                  <a
+                    key={link.url}
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setApiLinksOpen(false)}
+                    className="block text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+
+              {apiLinkGroups.datasetLinks.length > 0 && (
+                <>
+                  <div className="my-2 border-t border-white/10" />
+                  <p className="mb-2 font-semibold text-slate-100">Dataset APIs</p>
+                  <div className="max-h-36 space-y-1.5 overflow-y-auto">
+                    {apiLinkGroups.datasetLinks.map((link) => (
+                      <a
+                        key={link.url}
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => setApiLinksOpen(false)}
+                        className="block text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
+                      >
+                        {link.label}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       <Map
         ref={mapRef}
@@ -990,6 +1350,16 @@ export default function MapDashboard() {
             className="map-popup"
           >
             <p className="text-sm font-medium text-slate-100">{popup.text}</p>
+            {popup.sourceUrl && (
+              <a
+                href={popup.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 block text-xs text-cyan-300 underline-offset-2 hover:underline"
+              >
+                Source: {popup.sourceName ?? "Official dataset"}
+              </a>
+            )}
           </Popup>
         )}
       </Map>
@@ -1008,7 +1378,20 @@ export default function MapDashboard() {
           </span>
         </div>
 
-        {projects.length === 0 ? (
+        {!accountToken ? (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-400">
+              Sign in to create and sync projects with your Convex account.
+            </p>
+            <button
+              type="button"
+              onClick={() => setAuthModalOpen(true)}
+              className="rounded-md border border-[#14B8A6]/40 bg-[#14B8A6]/10 px-3 py-1.5 text-[11px] font-semibold text-[#14B8A6] transition-colors hover:bg-[#14B8A6]/20"
+            >
+              Sign In or Create Account
+            </button>
+          </div>
+        ) : projects.length === 0 ? (
           <p className="text-xs text-slate-400">
             No projects yet. Click &quot;New Project&quot; and place one on the map.
           </p>
@@ -1108,6 +1491,13 @@ export default function MapDashboard() {
         )}
       </div>
 
+      {authModalOpen && (
+        <AuthModal
+          onClose={() => setAuthModalOpen(false)}
+          onSubmit={handleAuthSubmit}
+        />
+      )}
+
       {showModal && modalLocation && (
         <ProjectModal
           key={`${modalMode}-${editingProjectId ?? "new"}-${modalLocation.lat}-${modalLocation.lng}`}
@@ -1187,8 +1577,51 @@ export default function MapDashboard() {
   );
 }
 
+function getExistingLayerIds(
+  mapRef: MapRef | null,
+  layerIds: string[]
+): string[] {
+  if (!mapRef || layerIds.length === 0) return [];
+
+  const map = mapRef.getMap();
+  if (!map || !map.isStyleLoaded()) return [];
+
+  return layerIds.filter((layerId) => Boolean(map.getLayer(layerId)));
+}
+
+function safeQueryRenderedFeatures(
+  mapRef: MapRef | null,
+  point: MapMouseEvent["point"],
+  options?: { layers: string[] }
+) {
+  if (!mapRef) return [];
+  try {
+    return mapRef.queryRenderedFeatures(point, options);
+  } catch {
+    return [];
+  }
+}
+
 function stringProp(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function formatDateTime(value: Date | null): string {
+  if (!value) return "Never";
+  return value.toLocaleString();
+}
+
+function firstHttpUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(/https?:\/\/[^\s|;]+/i);
+  return match ? match[0] : null;
+}
+
+function resolveBaseLayerId(layerId: string): string | null {
+  if (!layerId || layerId.startsWith("project-")) return null;
+  if (layerId.endsWith("-layer")) return layerId.slice(0, -"-layer".length);
+  if (layerId.endsWith("-border")) return layerId.slice(0, -"-border".length);
+  return layerId;
 }
 
 function parseProjectIdFromLayerId(layerId: string): string | null {
@@ -1213,6 +1646,38 @@ function createProjectId(): string {
     return crypto.randomUUID();
   }
   return `project-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function fromStoredProject(project: StoredProjectRecord): ProjectRecord {
+  return {
+    id: project.id,
+    lat: project.lat,
+    lng: project.lng,
+    config: {
+      projectType: project.config.projectType,
+      radiusKm: project.config.radiusKm,
+      name: project.config.name,
+      shapeType: project.config.shapeType,
+    },
+    analysisResult: project.analysisResult ?? null,
+    customPolygon: sanitizePolygon(project.customPolygon),
+  };
+}
+
+function toStoredProject(project: ProjectRecord): StoredProjectRecord {
+  return {
+    id: project.id,
+    lat: project.lat,
+    lng: project.lng,
+    config: {
+      projectType: project.config.projectType,
+      radiusKm: project.config.radiusKm,
+      name: project.config.name,
+      shapeType: project.config.shapeType,
+    },
+    analysisResult: project.analysisResult ?? null,
+    customPolygon: sanitizePolygon(project.customPolygon),
+  };
 }
 
 function getProjectAnalysisInput(project: ProjectRecord): {
@@ -1282,6 +1747,16 @@ function shiftPolygon(
   deltaLat: number
 ): [number, number][] {
   return polygon.map(([lng, lat]) => [lng + deltaLng, lat + deltaLat]);
+}
+
+function sanitizePolygon(
+  polygon: [number, number][] | undefined
+): [number, number][] | undefined {
+  if (!polygon || polygon.length === 0) return undefined;
+  const points = polygon
+    .map((point) => [Number(point[0]), Number(point[1])] as [number, number])
+    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+  return points.length > 0 ? points : undefined;
 }
 
 function closeRing(points: [number, number][]): [number, number][] {

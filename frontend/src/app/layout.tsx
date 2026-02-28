@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "BlueRegistry — Spatial Intelligence for the Blue Economy",
+  title: "BlueDocs — Spatial Intelligence for the Blue Economy",
   description:
     "Analyze spatial conflicts for offshore wind, aquaculture, and ocean energy projects against real federal regulatory layers.",
 };

@@ -62,6 +62,8 @@ class Layer(BaseModel):
     type: str  # polygon | line | point
     color: str  # hex color
     visible: bool = True
+    source_name: str | None = None
+    source_url: str | None = None
     geojson: dict  # raw GeoJSON FeatureCollection
 
 

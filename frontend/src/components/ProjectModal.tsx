@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 interface ProjectFormValues {
   projectType: string;
@@ -64,117 +65,120 @@ export function ProjectModal({
     initialValues?.shapeType ?? "circle"
   );
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
-        className="absolute inset-0 z-30 bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="absolute top-1/2 left-1/2 z-40 w-[340px] -translate-x-1/2 -translate-y-1/2 animate-scale-in rounded-xl border border-white/10 bg-[#0A1628]/90 p-6 shadow-[0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+      <div className="fixed inset-0 z-[70] flex items-end justify-center p-3 pb-6 sm:p-4 sm:pb-8">
+        <div className="w-full max-w-[360px] max-h-[calc(100dvh-6rem)] animate-scale-in overflow-y-auto rounded-xl border border-white/10 bg-[#0A1628]/90 p-6 shadow-[0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl sm:max-h-[calc(100dvh-8rem)]">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+            <button
+              onClick={onClose}
+              className="text-slate-500 transition-colors hover:text-white"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Coordinates */}
+          <p className="mb-5 text-xs text-slate-500">
+            {formatLat(lat)}, {formatLng(lng)}
+          </p>
+
+          {/* Project Type */}
+          <div className="mb-4">
+            <label className="mb-2 block text-xs font-medium text-slate-400">
+              Project Type
+            </label>
+            <select
+              value={projectType}
+              onChange={(e) => setProjectType(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#14B8A6]"
+            >
+              {PROJECT_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Radius */}
+          <div className="mb-4">
+            <label className="mb-2 flex items-center justify-between text-xs font-medium text-slate-400">
+              <span>Radius</span>
+              <span className="text-[#14B8A6]">{radiusKm} km</span>
+            </label>
+            <input
+              type="range"
+              min={5}
+              max={100}
+              value={radiusKm}
+              onChange={(e) => setRadiusKm(Number(e.target.value))}
+              className="slider w-full"
+            />
+          </div>
+
+          {/* Name */}
+          <div className="mb-4">
+            <label className="mb-2 block text-xs font-medium text-slate-400">
+              Project Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My Wind Farm"
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-slate-600 focus:border-[#14B8A6]"
+            />
+          </div>
+
+          {/* Shape */}
+          <div className="mb-6">
+            <label className="mb-2 block text-xs font-medium text-slate-400">
+              Shape
+            </label>
+            <select
+              value={shapeType}
+              onChange={(e) =>
+                setShapeType(
+                  e.target.value as "circle" | "square" | "hexagon" | "drawn"
+                )
+              }
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#14B8A6]"
+            >
+              {SHAPE_TYPES.map((shape) => (
+                <option key={shape.value} value={shape.value}>
+                  {shape.label}
+                </option>
+              ))}
+            </select>
+            {shapeType === "drawn" && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Save first, then use the Draw button in the Projects panel.
+              </p>
+            )}
+          </div>
+
+          {/* Analyze button */}
           <button
-            onClick={onClose}
-            className="text-slate-500 transition-colors hover:text-white"
+            onClick={() => onAnalyze(projectType, radiusKm, name, shapeType)}
+            className="w-full rounded-lg bg-[#14B8A6] py-3 text-sm font-semibold text-[#0A1628] shadow-[0_0_15px_rgba(20,184,166,0.3)] transition-all hover:shadow-[0_0_25px_rgba(20,184,166,0.5)]"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            {actionLabel}
           </button>
         </div>
-
-        {/* Coordinates */}
-        <p className="mb-5 text-xs text-slate-500">
-          {formatLat(lat)}, {formatLng(lng)}
-        </p>
-
-        {/* Project Type */}
-        <div className="mb-4">
-          <label className="mb-2 block text-xs font-medium text-slate-400">
-            Project Type
-          </label>
-          <select
-            value={projectType}
-            onChange={(e) => setProjectType(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#14B8A6]"
-          >
-            {PROJECT_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Radius */}
-        <div className="mb-4">
-          <label className="mb-2 flex items-center justify-between text-xs font-medium text-slate-400">
-            <span>Radius</span>
-            <span className="text-[#14B8A6]">{radiusKm} km</span>
-          </label>
-          <input
-            type="range"
-            min={5}
-            max={100}
-            value={radiusKm}
-            onChange={(e) => setRadiusKm(Number(e.target.value))}
-            className="slider w-full"
-          />
-        </div>
-
-        {/* Name */}
-        <div className="mb-4">
-          <label className="mb-2 block text-xs font-medium text-slate-400">
-            Project Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="My Wind Farm"
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-slate-600 focus:border-[#14B8A6]"
-          />
-        </div>
-
-        {/* Shape */}
-        <div className="mb-6">
-          <label className="mb-2 block text-xs font-medium text-slate-400">
-            Shape
-          </label>
-          <select
-            value={shapeType}
-            onChange={(e) =>
-              setShapeType(
-                e.target.value as "circle" | "square" | "hexagon" | "drawn"
-              )
-            }
-            className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#14B8A6]"
-          >
-            {SHAPE_TYPES.map((shape) => (
-              <option key={shape.value} value={shape.value}>
-                {shape.label}
-              </option>
-            ))}
-          </select>
-          {shapeType === "drawn" && (
-            <p className="mt-2 text-[11px] text-slate-500">
-              Save first, then use the Draw button in the Projects panel.
-            </p>
-          )}
-        </div>
-
-        {/* Analyze button */}
-        <button
-          onClick={() => onAnalyze(projectType, radiusKm, name, shapeType)}
-          className="w-full rounded-lg bg-[#14B8A6] py-3 text-sm font-semibold text-[#0A1628] shadow-[0_0_15px_rgba(20,184,166,0.3)] transition-all hover:shadow-[0_0_25px_rgba(20,184,166,0.5)]"
-        >
-          {actionLabel}
-        </button>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

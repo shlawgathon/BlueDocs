@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Layer } from "@/lib/types";
+import { getLayerSourceMeta } from "@/lib/layerSources";
 
 interface LayerPanelProps {
   layers: Layer[];
@@ -53,31 +54,45 @@ export function LayerPanel({ layers, visibility, onToggle }: LayerPanelProps) {
       {/* Layer list */}
       <div className="space-y-3">
         {layers.map((layer) => (
-          <div
-            key={layer.id}
-            className="flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: layer.color }}
-              />
-              <span className="text-sm text-slate-300">{layer.name}</span>
-            </div>
-            <button
-              onClick={() => onToggle(layer.id)}
-              className={`relative h-5 w-9 rounded-full transition-colors duration-300 ${
-                visibility[layer.id]
-                  ? "bg-[#14B8A6]"
-                  : "bg-white/10"
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-300 ${
-                  visibility[layer.id] ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </button>
+          <div key={layer.id} className="flex items-center justify-between">
+            {(() => {
+              const sourceMeta = getLayerSourceMeta(layer);
+              return (
+                <>
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: layer.color }}
+                      />
+                      <span className="truncate text-sm text-slate-300">{layer.name}</span>
+                    </div>
+                    {sourceMeta && (
+                      <a
+                        href={sourceMeta.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-5 block pt-0.5 text-[11px] text-cyan-300 transition-colors hover:text-cyan-200 hover:underline"
+                      >
+                        Source: {sourceMeta.source_name}
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onToggle(layer.id)}
+                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-300 ${
+                      visibility[layer.id] ? "bg-[#14B8A6]" : "bg-white/10"
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-300 ${
+                        visibility[layer.id] ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </>
+              );
+            })()}
           </div>
         ))}
       </div>

@@ -29,5 +29,7 @@ async def get_layer(layer_id: str, request: Request) -> dict:
         "type": layer.layer_type,
         "color": layer.color,
         "visible": True,
+        "source_name": layer.source_name,
+        "source_url": layer.source_url,
         "geojson": layer.geojson,
     }

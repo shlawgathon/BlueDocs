@@ -8,6 +8,8 @@ export interface Layer {
   type: "polygon" | "line" | "point";
   color: string;
   visible: boolean;
+  source_name?: string | null;
+  source_url?: string | null;
   geojson: GeoJSON.FeatureCollection;
 }
 

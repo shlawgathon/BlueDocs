@@ -23,6 +23,8 @@ _LAYER_DEFS: list[dict[str, Any]] = [
         "color": "#3B82F6",
         "file": "wind_leases.geojson",
         "buffer_km": 5.0,
+        "source_name": "BOEM Renewable Energy GIS Data",
+        "source_url": "https://www.boem.gov/renewable-energy/mapping-and-data/renewable-energy-gis-data",
     },
     {
         "id": "marine-protected-areas",
@@ -31,6 +33,8 @@ _LAYER_DEFS: list[dict[str, Any]] = [
         "color": "#10B981",
         "file": "marine_protected_areas.geojson",
         "buffer_km": 5.0,
+        "source_name": "NOAA MPA Inventory",
+        "source_url": "https://marineprotectedareas.noaa.gov/dataanalysis/mpainventory/",
     },
     {
         "id": "shipping-lanes",
@@ -39,6 +43,8 @@ _LAYER_DEFS: list[dict[str, Any]] = [
         "color": "#F59E0B",
         "file": "shipping_lanes.geojson",
         "buffer_km": 10.0,
+        "source_name": "MarineCadastre AIS Data",
+        "source_url": "https://marinecadastre.gov/ais/",
     },
     {
         "id": "submarine-cables",
@@ -47,6 +53,8 @@ _LAYER_DEFS: list[dict[str, Any]] = [
         "color": "#8B5CF6",
         "file": "submarine_cables.geojson",
         "buffer_km": 2.0,
+        "source_name": "TeleGeography Submarine Cable Map",
+        "source_url": "https://www.submarinecablemap.com/",
     },
 ]
 
@@ -57,7 +65,17 @@ _LAYER_DEFS: list[dict[str, Any]] = [
 class CachedLayer:
     """Holds both raw GeoJSON and parsed Shapely geometries for a layer."""
 
-    __slots__ = ("id", "name", "layer_type", "color", "buffer_km", "geojson", "geometries")
+    __slots__ = (
+        "id",
+        "name",
+        "layer_type",
+        "color",
+        "buffer_km",
+        "source_name",
+        "source_url",
+        "geojson",
+        "geometries",
+    )
 
     def __init__(
         self,
@@ -66,6 +84,8 @@ class CachedLayer:
         layer_type: str,
         color: str,
         buffer_km: float,
+        source_name: str | None,
+        source_url: str | None,
         geojson: dict,
     ) -> None:
         self.id = id
@@ -73,6 +93,8 @@ class CachedLayer:
         self.layer_type = layer_type
         self.color = color
         self.buffer_km = buffer_km
+        self.source_name = source_name
+        self.source_url = source_url
         self.geojson = geojson
         self.geometries: list[tuple[Any, dict]] = []
 
@@ -119,6 +141,8 @@ class GeoDataService:
             layer_type=defn["type"],
             color=defn["color"],
             buffer_km=defn["buffer_km"],
+            source_name=defn.get("source_name"),
+            source_url=defn.get("source_url"),
             geojson=geojson,
         )
 
@@ -131,6 +155,8 @@ class GeoDataService:
                 "type": cl.layer_type,
                 "color": cl.color,
                 "visible": True,
+                "source_name": cl.source_name,
+                "source_url": cl.source_url,
                 "geojson": cl.geojson,
             }
             for cl in self.layers.values()
