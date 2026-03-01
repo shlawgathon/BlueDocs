@@ -16,7 +16,7 @@ Bluedocs is an interactive ocean planning tool that lets users propose offshore 
 | Layer        | Stack                                        | Role                                                                                                                |
 | ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Frontend** | Next.js · React · Mapbox GL JS · Tailwind    | Dark-themed map dashboard with glassmorphism panels, real-time layer rendering, and animated conflict visualization |
-| **Accounts** | Convex                                       | Email/password account auth and per-user persisted project lists                                                      |
+| **Accounts** | Convex                                       | Email/password account auth and per-user persisted project lists                                                    |
 | **Backend**  | FastAPI · Shapely · Python                   | GeoJSON ingestion, spatial overlap/buffer analysis, risk scoring, and grid-search relocation engine                 |
 | **Data**     | BOEM · NOAA · MarineCadastre · TeleGeography | Real federal GeoJSON datasets for wind leases, marine protected areas, shipping lanes, and submarine cables         |
 
@@ -49,6 +49,33 @@ flowchart TD
     API --> Engine --> Geo
     API --> Rec --> Engine
 ```
+
+## How Project Shapes Work
+
+When a user drops a pin and configures a project, the frontend generates a GeoJSON polygon on the map representing the project's footprint. Four shape types are supported:
+
+| Shape       | How It's Drawn                      | Math                                                                                                               |
+| ----------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Circle**  | 64-sided regular polygon            | Vertices at equal angles around center, radius converted from km to degrees via `radiusKm / 6371` (Earth's radius) |
+| **Square**  | 4-sided regular polygon rotated 45° | Same algorithm as circle but with 4 vertices and a `π/4` rotation so edges align N/S/E/W                           |
+| **Hexagon** | 6-sided regular polygon             | Same algorithm with 6 vertices, no rotation                                                                        |
+| **Drawn**   | Freehand polygon from user clicks   | User clicks points on the map; centroid and bounding radius are computed via haversine distance                    |
+
+All shapes ultimately call `createRegularPolygonGeoJSON(lng, lat, radiusKm, sides, properties, rotation)`:
+
+```
+for i in 0..sides:
+    angle = (i / sides) × 2π + rotation
+    dLat  = (radiusKm / 6371) × cos(angle)
+    dLng  = (radiusKm / 6371) × sin(angle) / cos(lat)
+    → [lng + dLng, lat + dLat]  (converted to degrees)
+```
+
+The resulting polygon is rendered on the Mapbox map as a semi-transparent fill with a dashed border. It's also sent to the backend's **ConflictEngine**, which uses Shapely to:
+
+1. **Overlap check** — `project_polygon.intersects(layer_geometry)` → flags direct spatial conflicts
+2. **Buffer check** — Expands the project polygon by each layer's buffer distance (2–10 km) and checks for nearby features
+3. **Scoring** — Overlap area (km²) and proximity (km) feed into the 0–100 risk score
 
 ## Key Endpoints
 
