@@ -52,6 +52,16 @@ app.add_middleware(
 app.include_router(layers_router)
 app.include_router(analysis_router)
 
+@app.get("/")
+async def root():
+    """Root endpoint — API info."""
+    return {
+        "name": "BlueRegistry API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
 
 @app.get("/health")
 async def health():
