@@ -1,8 +1,8 @@
-# BlueRegistry
+# BlueDocs
 
 **Spatial Intelligence for the Blue Economy**
 
-BlueRegistry is an interactive ocean planning tool that lets users propose offshore projects—wind farms, aquaculture sites, subsea cables—and instantly analyze spatial conflicts against real federal datasets. Drop a pin, set a radius, and get a risk score with actionable relocation recommendations.
+Bluedocs is an interactive ocean planning tool that lets users propose offshore projects—wind farms, aquaculture sites, subsea cables—and instantly analyze spatial conflicts against real federal datasets. Drop a pin, set a radius, and get a risk score with actionable relocation recommendations.
 
 ## Demo Flow
 
